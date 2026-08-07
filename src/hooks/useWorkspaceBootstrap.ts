@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useAuthStore } from "@/stores/authStore";
+import { DERIV_CONFIG } from "@/config/app";
 
 const STAGES = [
   "Initializing modules",
@@ -45,7 +46,7 @@ export function useWorkspaceBootstrap() {
     setWebsocket("connecting");
     const started = performance.now();
     try {
-      const socket = await ConnectionManager.connect(1);
+      const socket = await ConnectionManager.connect(DERIV_CONFIG.appId);
       setLatency(Math.round(performance.now() - started));
       setWebsocket("connected");
       setProgress(52);

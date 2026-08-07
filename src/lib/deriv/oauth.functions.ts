@@ -2,11 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { DERIV_CONFIG } from "@/config/app";
 
-const exchangeSchema = z.object({
-  code: z.string().min(1).max(4096),
-  codeVerifier: z.string().min(20).max(256),
-});
-
 type DerivRawAccount = {
   loginid?: string;
   account_id?: string;
@@ -26,7 +21,14 @@ export type DerivTokenResult = {
 
 /** Server-side authorization-code -> access-token exchange (never done in the browser). */
 export const exchangeDerivCode = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => exchangeSchema.parse(data))
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        code: z.string().min(1).max(4096),
+        codeVerifier: z.string().min(43).max(128),
+      })
+      .parse(data),
+  )
   .handler(async ({ data }): Promise<DerivTokenResult> => {
     const body = new URLSearchParams({
       grant_type: "authorization_code",
