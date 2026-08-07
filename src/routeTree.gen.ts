@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as AppAnalysisRouteImport } from './routes/app.analysis'
 import { Route as AppBotRouteImport } from './routes/app.bot'
 import { Route as AppManualTradeRouteImport } from './routes/app.manual-trade'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const AppManualTradeRoute = AppManualTradeRouteImport.update({
   path: '/manual-trade',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,12 +70,25 @@ export interface FileRoutesById {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/settings': typeof AppSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/analysis' | '/app/bot' | '/app/manual-trade'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/app/analysis'
+    | '/app/bot'
+    | '/app/manual-trade'
+    | '/app/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/app/analysis' | '/app/bot' | '/app/manual-trade'
+  to:
+    | '/'
+    | '/app'
+    | '/app/analysis'
+    | '/app/bot'
+    | '/app/manual-trade'
+    | '/app/settings'
   id:
     | '__root__'
     | '/'
@@ -75,6 +96,7 @@ export interface FileRouteTypes {
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
+    | '/app/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +141,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppManualTradeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -126,12 +155,14 @@ interface AppRouteChildren {
   AppAnalysisRoute: typeof AppAnalysisRoute
   AppBotRoute: typeof AppBotRoute
   AppManualTradeRoute: typeof AppManualTradeRoute
+  AppSettingsRoute: typeof AppSettingsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAnalysisRoute: AppAnalysisRoute,
   AppBotRoute: AppBotRoute,
   AppManualTradeRoute: AppManualTradeRoute,
+  AppSettingsRoute: AppSettingsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
