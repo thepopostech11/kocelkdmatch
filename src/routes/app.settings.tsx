@@ -19,6 +19,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { APP_CONFIG, SYMBOLS, TICK_WINDOWS } from "@/config/app";
 import { MODULE_REGISTRY } from "@/services/moduleRegistry";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
+import { TokenConnect } from "@/components/account/TokenConnect";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -312,6 +313,9 @@ function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="Security" className="mt-5 space-y-4">
+          <Section title="Deriv authorisation">
+            <TokenConnect />
+          </Section>
           <Section title="Security">
             <Row label="Session timeout" hint={`${s.sessionTimeout} minutes`}>
               <Slider
