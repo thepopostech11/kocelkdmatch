@@ -138,6 +138,7 @@ export class MultiSymbolScanner {
 
     if (type !== "tick") return;
     const raw = data["tick"] as Record<string, unknown> | undefined;
+    if (!raw) return;
     const symbol = typeof raw?.["symbol"] === "string" ? raw["symbol"] : "";
     const quote = raw?.["quote"];
     const state = this.states.get(symbol);
