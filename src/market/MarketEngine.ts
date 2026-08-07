@@ -370,6 +370,7 @@ class MarketEngineImpl {
     [this.pingTimer, this.rateTimer, this.stallTimer].forEach((t) => t && clearInterval(t));
     if (this.historyTimer) clearTimeout(this.historyTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopPollFeed();
     this.pingTimer = null;
     this.rateTimer = null;
     this.stallTimer = null;
@@ -377,6 +378,7 @@ class MarketEngineImpl {
     this.reconnectTimer = null;
     this.socket?.send({ forget_all: ["ticks", "balance"] });
   }
+
 
   private startHeartbeat() {
     if (this.pingTimer) clearInterval(this.pingTimer);
