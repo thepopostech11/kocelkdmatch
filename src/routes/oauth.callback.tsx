@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { clearStoredPkce, readStoredPkce } from "@/lib/deriv/oauth";
+import { clearStoredPkce, parseAccountsFromLocation, readStoredPkce } from "@/lib/deriv/oauth";
 import { exchangeDerivCode, fetchDerivAccounts } from "@/lib/deriv/oauth.functions";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -47,6 +47,28 @@ function OAuthCallback() {
       if (oauthError) {
         setOauth("error");
         setError(oauthError);
+        return;
+      }
+
+      // Legacy Deriv redirect: acct1/token1/cur1... Each token is a real
+      // WebSocket API token, so the socket can authorize immediately.
+      const legacyAccounts = parseAccountsFromLocation({
+        search: window.location.search,
+        hash: window.location.hash,
+      });
+      if (legacyAccounts.length) {
+        const primary =
+          legacyAccounts.find((a) => !a.isVirtual) ?? (legacyAccounts[0] as (typeof legacyAccounts)[number]);
+        setSession(primary.token ?? "", "Bearer", 24 * 3600);
+        setAccounts(legacyAccounts);
+        clearStoredPkce();
+        setOauth("connected");
+        notify(
+          "success",
+          "Signed in",
+          `Deriv session established for ${legacyAccounts.length} account(s).`,
+        );
+        void navigate({ to: "/app/analysis", replace: true });
         return;
       }
 

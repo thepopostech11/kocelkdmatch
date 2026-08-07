@@ -163,7 +163,7 @@ function LoginPage() {
             <StatusDot state={online ? "connected" : "error"} />
             {online ? "Connected" : "Offline"}
           </span>
-          <span>v{APP_CONFIG.version}</span>
+          <span>made by Mr~Popo</span>
         </div>
       </motion.div>
     </div>

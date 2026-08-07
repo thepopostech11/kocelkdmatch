@@ -19,6 +19,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { APP_CONFIG, SYMBOLS, TICK_WINDOWS } from "@/config/app";
 import { MODULE_REGISTRY } from "@/services/moduleRegistry";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
+import { TokenConnect } from "@/components/account/TokenConnect";
 
 export const Route = createFileRoute("/app/settings")({
   head: () => ({
@@ -80,8 +81,8 @@ function SettingsPage() {
   const setSymbol = useConnectionStore((st) => st.setSymbol);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-bold sm:text-3xl">Settings</h1>
+    <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
+      <h1 className="text-xl font-bold sm:text-3xl">Settings</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Preferences are stored locally and restored on every session.
       </p>
@@ -312,6 +313,9 @@ function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="Security" className="mt-5 space-y-4">
+          <Section title="Deriv authorisation">
+            <TokenConnect />
+          </Section>
           <Section title="Security">
             <Row label="Session timeout" hint={`${s.sessionTimeout} minutes`}>
               <Slider
