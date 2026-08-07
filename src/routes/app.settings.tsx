@@ -81,8 +81,8 @@ function SettingsPage() {
   const setSymbol = useConnectionStore((st) => st.setSymbol);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-bold sm:text-3xl">Settings</h1>
+    <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
+      <h1 className="text-xl font-bold sm:text-3xl">Settings</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Preferences are stored locally and restored on every session.
       </p>

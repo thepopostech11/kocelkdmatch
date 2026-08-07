@@ -49,9 +49,9 @@ function BotPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-3 sm:p-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-lg font-bold sm:text-xl"><Bot className="size-5 text-primary" />Intelligent Multi-Symbol MATCHES Bot</h1>
+      <header className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 sm:flex sm:flex-wrap sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-base font-bold sm:text-xl"><Bot className="size-5 text-primary" />Intelligent Multi-Symbol MATCHES Bot</h1>
           <p className="text-xs text-muted-foreground">Real-money automated trading · official live Deriv feed</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold uppercase">
@@ -60,7 +60,7 @@ function BotPage() {
         </div>
       </header>
 
-      <section className="panel grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+      <section className="panel grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold"><Radar className="size-4 text-accent" />AUTO MARKET SCANNER</div>
           <p className="mt-1 text-xs text-muted-foreground">The bot selects markets, target digits, triggers, and duration only after every critical gate passes.</p>
@@ -70,7 +70,7 @@ function BotPage() {
             <span>Trading permission: <strong className="text-foreground">{diagnostics.tradingPermission ? "enabled" : "not granted"}</strong></span>
           </div>
         </div>
-        <div className="grid min-w-64 grid-cols-2 gap-2">
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">
           <label className="text-xs text-muted-foreground">Stake amount
             <Input className="mt-1" type="number" min="0.35" step="0.01" value={stake} disabled={running} onChange={(event) => setStake(Number(event.target.value))} />
           </label>
@@ -85,9 +85,9 @@ function BotPage() {
             </Select>
           </label>
           {running ? (
-            <Button className="col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
+            <Button className="sm:col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
           ) : (
-            <Button className="col-span-2" onClick={() => void start()}><Play />Start bot</Button>
+            <Button className="sm:col-span-2" onClick={() => void start()}><Play />Start bot</Button>
           )}
         </div>
         {(actionError || engine.error) && <p className="text-sm text-destructive lg:col-span-2">{actionError ?? engine.error}</p>}

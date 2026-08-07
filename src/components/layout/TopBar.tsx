@@ -57,12 +57,12 @@ export function TopBar({ onLogout }: Props) {
           </span>
         </Link>
 
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
           {/* Account + balance */}
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-2.5 py-1.5 text-left sm:px-3">
+            <DropdownMenuTrigger className="flex min-w-0 max-w-[52vw] items-center gap-2 rounded-xl border border-border bg-surface-2 px-2.5 py-1.5 text-left sm:max-w-none sm:px-3">
               <Wallet className="size-4 shrink-0 text-primary" />
-              <span className="flex min-w-0 flex-col leading-tight">
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate font-mono text-xs font-bold">
                   {mounted ? loginId || "No account" : "—"}
                 </span>
@@ -77,7 +77,7 @@ export function TopBar({ onLogout }: Props) {
               </span>
               <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
+            <DropdownMenuContent align="end" className="w-[min(18rem,calc(100vw-1.5rem))]">
               <DropdownMenuLabel>Switch account</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {accounts.length === 0 && (
@@ -120,7 +120,7 @@ export function TopBar({ onLogout }: Props) {
                 </span>
               )}
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80">
+            <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-1.5rem))]">
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {notifications.length === 0 && (
@@ -156,7 +156,7 @@ export function TopBar({ onLogout }: Props) {
               key={item.to}
               to={item.to}
               className={cn(
-                "flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                "flex shrink-0 items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-medium transition-colors sm:px-3 sm:text-sm",
                 active
                   ? "bg-gradient-brand text-primary-foreground shadow-soft"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
