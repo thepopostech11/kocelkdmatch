@@ -10,15 +10,15 @@ export const APP_CONFIG = {
 /**
  * Deriv application configuration.
  *
- * `appId` MUST be the numeric application ID registered at
+ * `appId` MUST be the application ID registered at
  * https://api.deriv.com/dashboard for this app. The Deriv WebSocket API
  * (`authorize`, `buy`, `proposal`) rejects tokens that were not issued for the
  * same app_id, which is why the legacy OAuth flow below is keyed to it.
  */
 export const DERIV_CONFIG = {
-  // OAuth2 client ID issued by Deriv for this application.
-  // This is intentionally separate from the numeric legacy WebSocket app_id.
-  appId: 1089,
+  // Application ID registered with Deriv for this app (used for both the
+  // legacy WebSocket OAuth flow and the OAuth2 client_id).
+  appId: "341wtpayB6TTevM7ac4LR",
   clientId: "341wtpayB6TTevM7ac4LR",
   redirectUri: "https://kocelkdmatch.lovable.app/oauth/callback",
   // Legacy OAuth endpoint: returns acct1/token1/cur1... query params containing
