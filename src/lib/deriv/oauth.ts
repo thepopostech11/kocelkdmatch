@@ -10,9 +10,24 @@ import {
 
 type AuthMode = "login" | "registration";
 
-/** Builds the Deriv OAuth2 Authorization Code + PKCE URL. */
+/**
+ * Builds the Deriv authorization URL.
+ *
+ * The legacy OAuth endpoint is used on purpose: it redirects back with
+ * `acct1/token1/cur1...`, i.e. a ready-to-use WebSocket API token per account.
+ * The newer auth.deriv.com access token is a REST bearer token that the
+ * WebSocket `authorize` call rejects, which is what previously left the
+ * workspace on "Authorised: No" (no balance, no trading permission).
+ */
 export async function buildAuthorizationUrl(mode: AuthMode = "login"): Promise<string> {
-  return buildPkceAuthorizationUrl(mode);
+  const params = new URLSearchParams({
+    app_id: String(DERIV_CONFIG.appId),
+    l: "EN",
+    brand: "deriv",
+    redirect_uri: DERIV_CONFIG.redirectUri,
+  });
+  if (mode === "registration") params.set("route", "signup");
+  return `${DERIV_CONFIG.legacyAuthorizeUrl}?${params.toString()}`;
 }
 
 /**
@@ -46,7 +61,7 @@ export async function buildPkceAuthorizationUrl(mode: AuthMode = "login"): Promi
  * Returns one DerivAccount per acctN triple, each carrying its own API token.
  */
 export function parseLegacyAccounts(search: string): DerivAccount[] {
-  const params = new URLSearchParams(search);
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const accounts: DerivAccount[] = [];
 
   for (let i = 1; i < 30; i += 1) {
@@ -67,6 +82,13 @@ export function parseLegacyAccounts(search: string): DerivAccount[] {
   }
 
   return accounts;
+}
+
+/** Legacy tokens can arrive on the query string or on the hash fragment. */
+export function parseAccountsFromLocation(location: { search: string; hash: string }): DerivAccount[] {
+  const fromSearch = parseLegacyAccounts(location.search);
+  if (fromSearch.length) return fromSearch;
+  return parseLegacyAccounts(location.hash.replace(/^#/, ""));
 }
 
 export function readStoredPkce() {
