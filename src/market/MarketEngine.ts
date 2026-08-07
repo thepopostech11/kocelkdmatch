@@ -253,6 +253,7 @@ class MarketEngineImpl {
 
   /** Swap the streamed symbol without tearing down the socket. */
   subscribeSymbol(symbol: string) {
+    this.stopPollFeed();
     this.symbol = symbol;
     this.pipSize = this.pipFor(symbol);
     this.buffer = [];
