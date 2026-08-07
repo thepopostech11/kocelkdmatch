@@ -4,6 +4,8 @@ export type DerivAccount = {
   accountType: string;
   isVirtual: boolean;
   balance: number;
+  /** WebSocket API token scoped to this specific account (legacy OAuth flow). */
+  token?: string;
 };
 
 export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "error";
