@@ -10,33 +10,76 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as AppAnalysisRouteImport } from './routes/app.analysis'
+import { Route as AppBotRouteImport } from './routes/app.bot'
+import { Route as AppManualTradeRouteImport } from './routes/app.manual-trade'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppAnalysisRoute = AppAnalysisRouteImport.update({
+  id: '/analysis',
+  path: '/analysis',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBotRoute = AppBotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppManualTradeRoute = AppManualTradeRouteImport.update({
+  id: '/manual-trade',
+  path: '/manual-trade',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/analysis': typeof AppAnalysisRoute
+  '/app/bot': typeof AppBotRoute
+  '/app/manual-trade': typeof AppManualTradeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/analysis': typeof AppAnalysisRoute
+  '/app/bot': typeof AppBotRoute
+  '/app/manual-trade': typeof AppManualTradeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/app': typeof AppRouteWithChildren
+  '/app/analysis': typeof AppAnalysisRoute
+  '/app/bot': typeof AppBotRoute
+  '/app/manual-trade': typeof AppManualTradeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/app' | '/app/analysis' | '/app/bot' | '/app/manual-trade'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/app' | '/app/analysis' | '/app/bot' | '/app/manual-trade'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/app/analysis'
+    | '/app/bot'
+    | '/app/manual-trade'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,22 +91,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/app/analysis': {
+      id: '/app/analysis'
+      path: '/analysis'
+      fullPath: '/app/analysis'
+      preLoaderRoute: typeof AppAnalysisRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/bot': {
+      id: '/app/bot'
+      path: '/bot'
+      fullPath: '/app/bot'
+      preLoaderRoute: typeof AppBotRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/manual-trade': {
+      id: '/app/manual-trade'
+      path: '/manual-trade'
+      fullPath: '/app/manual-trade'
+      preLoaderRoute: typeof AppManualTradeRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
+interface AppRouteChildren {
+  AppAnalysisRoute: typeof AppAnalysisRoute
+  AppBotRoute: typeof AppBotRoute
+  AppManualTradeRoute: typeof AppManualTradeRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAnalysisRoute: AppAnalysisRoute,
+  AppBotRoute: AppBotRoute,
+  AppManualTradeRoute: AppManualTradeRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
