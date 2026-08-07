@@ -67,7 +67,7 @@ export type Diagnostics = {
   tradingPermission: boolean;
   lastError: string | null;
   symbolsLoaded: number;
-  feedMode: "history" | "fallback" | "none";
+  feedMode: "history" | "fallback" | "poll" | "none";
   reconnects: number;
 };
 
@@ -89,6 +89,8 @@ class MarketEngineImpl {
   private rateTimer: ReturnType<typeof setInterval> | null = null;
   private stallTimer: ReturnType<typeof setInterval> | null = null;
   private historyTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private polling = false;
   private pingSentAt = 0;
   private starting: Promise<void> | null = null;
   private reconnectAttempts = 0;
@@ -251,6 +253,7 @@ class MarketEngineImpl {
 
   /** Swap the streamed symbol without tearing down the socket. */
   subscribeSymbol(symbol: string) {
+    this.stopPollFeed();
     this.symbol = symbol;
     this.pipSize = this.pipFor(symbol);
     this.buffer = [];
@@ -313,6 +316,44 @@ class MarketEngineImpl {
     this.emit();
   }
 
+  /**
+   * Last-resort live feed: Deriv rejects *streaming* subscriptions for symbols
+   * outside the session's landing company, but non-subscribing `ticks_history`
+   * still returns real quotes. Poll it so the workspace always shows genuine
+   * Deriv data instead of an error (never synthetic/fake ticks).
+   */
+  private startPollFeed() {
+    const socket = this.socket;
+    if (!socket) return;
+    if (this.pollTimer) return;
+    this.polling = true;
+    this.diagnostics = {
+      ...this.diagnostics,
+      feedMode: "poll",
+      feed: this.buffer.length ? "streaming" : "connecting",
+      lastError: "Streaming unavailable for this account — polling live Deriv quotes",
+    };
+    const poll = () => {
+      if (!this.socket?.isOpen) return;
+      this.socket.send({
+        ticks_history: this.symbol,
+        end: "latest",
+        count: this.buffer.length ? 30 : MAX_BUFFER,
+        style: "ticks",
+      });
+    };
+    poll();
+    this.pollTimer = setInterval(poll, 1000);
+    this.emit();
+  }
+
+  private stopPollFeed() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    this.polling = false;
+  }
+
+
   private pipFor(symbol: string) {
     const meta = this.symbols.find((s) => s.symbol === symbol);
     return meta?.pip ?? SYMBOL_PIPS[symbol] ?? 2;
@@ -330,6 +371,7 @@ class MarketEngineImpl {
     [this.pingTimer, this.rateTimer, this.stallTimer].forEach((t) => t && clearInterval(t));
     if (this.historyTimer) clearTimeout(this.historyTimer);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.stopPollFeed();
     this.pingTimer = null;
     this.rateTimer = null;
     this.stallTimer = null;
@@ -337,6 +379,7 @@ class MarketEngineImpl {
     this.reconnectTimer = null;
     this.socket?.send({ forget_all: ["ticks", "balance"] });
   }
+
 
   private startHeartbeat() {
     if (this.pingTimer) clearInterval(this.pingTimer);
@@ -382,18 +425,28 @@ class MarketEngineImpl {
     if (error) {
       const message = error.message ?? error.code ?? "Deriv API error";
       this.diagnostics = { ...this.diagnostics, lastError: message };
-      if (error.code === "InvalidSymbol" || error.code === "MarketIsClosed") {
+      if (error.code === "MarketIsClosed") {
         this.diagnostics = { ...this.diagnostics, feed: "error" };
+      }
+      // Streaming rejected (landing-company / permission gating): keep real
+      // Deriv data flowing through the polling feed instead of erroring out.
+      if (
+        error.code === "InvalidSymbol" ||
+        error.code === "StreamingNotAllowed" ||
+        error.code === "PermissionDenied"
+      ) {
+        this.startPollFeed();
       }
       if (type === "authorize" || error.code === "InvalidToken") {
         this.diagnostics = { ...this.diagnostics, authorised: false };
         this.account = { ...this.account, authorised: false, status: "unauthorised" };
       }
       // A failed history request should immediately fall back.
-      if (type === "history" || type === "candles") this.startFallbackFeed();
+      if ((type === "history" || type === "candles") && !this.polling) this.startFallbackFeed();
       this.emit();
       return;
     }
+
 
     if (type === "active_symbols") {
       const list = (data["active_symbols"] as Record<string, unknown>[] | undefined) ?? [];
@@ -527,24 +580,48 @@ class MarketEngineImpl {
       const times = history?.times ?? [];
 
       if (!prices.length) {
-        this.startFallbackFeed();
+        if (!this.polling) this.startFallbackFeed();
         return;
       }
 
       this.pipSize = this.pipFor(this.symbol);
-      this.buffer = prices.map((quote, i) => ({
+      const incoming = prices.map((quote, i) => ({
         epoch: times[i] ?? Date.now() / 1000,
         quote,
         digit: extractDigit(quote, this.pipSize),
         pipSize: this.pipSize,
         receivedAt: Date.now(),
       }));
+
+      if (this.polling && this.buffer.length) {
+        // Merge only genuinely new quotes from the poll response.
+        const lastEpoch = this.buffer[this.buffer.length - 1]?.epoch ?? 0;
+        const fresh = incoming.filter((t) => t.epoch > lastEpoch);
+        if (!fresh.length) return;
+        this.buffer = [...this.buffer, ...fresh].slice(-MAX_BUFFER);
+        this.processed += fresh.length;
+        fresh.forEach(() => this.recentTimes.push(Date.now()));
+        const latest = fresh[fresh.length - 1]!;
+        this.diagnostics = {
+          ...this.diagnostics,
+          feed: "streaming",
+          feedMode: "poll",
+          bufferSize: this.buffer.length,
+          lastTickAt: Date.now(),
+          serverTime: latest.epoch * 1000,
+        };
+        this.recompute(latest);
+        this.tickListeners.forEach((l) => l(latest));
+        return;
+      }
+
+      this.buffer = incoming;
       this.processed = this.buffer.length;
       const sub = data["subscription"] as { id?: string } | undefined;
       this.diagnostics = {
         ...this.diagnostics,
         feed: "streaming",
-        feedMode: "history",
+        feedMode: this.polling ? "poll" : "history",
         subscriptionId: sub?.id ?? this.diagnostics.subscriptionId,
         bufferSize: this.buffer.length,
         lastTickAt: Date.now(),
@@ -552,6 +629,7 @@ class MarketEngineImpl {
       this.recompute();
       return;
     }
+
 
     if (type === "tick") {
       const t = data["tick"] as Record<string, unknown> | undefined;
