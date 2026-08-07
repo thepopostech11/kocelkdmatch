@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConnectionManager } from "@/websocket/ConnectionManager";
+import { MarketEngine } from "@/market/MarketEngine";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useAuthStore } from "@/stores/authStore";
+import { selectActiveToken } from "@/stores/authStore";
 
 const STAGES = [
   "Initializing modules",
@@ -15,7 +16,7 @@ const STAGES = [
 /** Runs the post-login boot sequence and reports smooth progress. */
 export function useWorkspaceBootstrap() {
   const [progress, setProgress] = useState(0);
-  const [stage, setStage] = useState(STAGES[0]!);
+  const [stage, setStage] = useState("Initializing modules");
   const [done, setDone] = useState(false);
   const started = useRef(false);
 
@@ -27,6 +28,7 @@ export function useWorkspaceBootstrap() {
   const setLastTick = useConnectionStore((s) => s.setLastTick);
   const setServerTime = useConnectionStore((s) => s.setServerTime);
   const bootstrapped = useAuthStore((s) => s.bootstrapped);
+  const token = useAuthStore(selectActiveToken);
   const setBootstrapped = useAuthStore((s) => s.setBootstrapped);
 
   const run = useCallback(async () => {
@@ -37,38 +39,41 @@ export function useWorkspaceBootstrap() {
         setTimeout(resolve, 420);
       });
 
-    await tick(12, STAGES[0]!);
+    await tick(12, "Initializing modules");
     setOauth("connected");
-    await tick(28, STAGES[1]!);
+    await tick(28, "Authenticating session");
 
-    setStage(STAGES[2]!);
+    setStage("Connecting to Deriv servers");
     setWebsocket("connecting");
     const started = performance.now();
     try {
-      const socket = await ConnectionManager.connect(1);
+      await MarketEngine.start(token, symbol, 100);
       setLatency(Math.round(performance.now() - started));
       setWebsocket("connected");
       setProgress(52);
 
-      await tick(70, STAGES[3]!);
+      await tick(70, "Opening live market feed");
       setMarketFeed("connecting");
-      socket.subscribe((data) => {
-        const t = data["tick"] as { quote?: number; epoch?: number } | undefined;
-        if (t?.quote) {
+      const unsubscribe = MarketEngine.onTick((t) => {
+        if (t.quote) {
           setMarketFeed("connected");
           setLastTick(t.quote);
-          if (t.epoch) setServerTime(t.epoch * 1000);
+          setServerTime(t.epoch * 1000);
         }
       });
-      socket.send({ ticks: symbol, subscribe: 1 });
-      await tick(88, STAGES[4]!);
+      if (MarketEngine.snapshot.live.currentPrice) {
+        setMarketFeed("connected");
+        setLastTick(MarketEngine.snapshot.live.currentPrice);
+      }
+      await tick(88, "Streaming ticks & statistics");
+      unsubscribe();
     } catch {
       setWebsocket("error");
       setMarketFeed("error");
       await tick(88, "Market feed unavailable — continuing offline");
     }
 
-    await tick(100, STAGES[5]!);
+    await tick(100, "Preparing workspace");
     setBootstrapped(true);
     setTimeout(() => setDone(true), 350);
   }, [
@@ -80,6 +85,7 @@ export function useWorkspaceBootstrap() {
     setServerTime,
     setBootstrapped,
     symbol,
+    token,
   ]);
 
   useEffect(() => {

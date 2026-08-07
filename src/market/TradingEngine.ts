@@ -48,6 +48,7 @@ type Listener = () => void;
 
 class TradingEngineImpl {
   private unsubscribe: (() => void) | null = null;
+  private attachedSocket: WebSocketManager | null = null;
   private listeners = new Set<Listener>();
   private eventListeners = new Set<(e: TradeEvent) => void>();
 
@@ -67,7 +68,9 @@ class TradingEngineImpl {
   }
 
   private attach(socket: WebSocketManager) {
-    if (this.unsubscribe) return;
+    if (this.attachedSocket === socket && this.unsubscribe) return;
+    this.unsubscribe?.();
+    this.attachedSocket = socket;
     this.unsubscribe = socket.subscribe((data) => this.handle(data));
   }
 

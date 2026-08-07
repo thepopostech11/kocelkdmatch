@@ -67,7 +67,7 @@ export function buildPrediction(
     Math.max(
       5,
       Math.min(
-        95,
+        99,
         margin * 190 +
           agreement * 45 +
           snapshot.quality.predictionReliability * 0.28 -

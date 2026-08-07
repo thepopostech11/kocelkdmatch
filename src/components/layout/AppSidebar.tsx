@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Activity, Bot, LineChart, LogOut, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export const NAV_ITEMS = [
   { to: "/app/analysis", label: "Analysis", icon: LineChart },
@@ -25,13 +26,15 @@ export function AppSidebar({ collapsed, mobileOpen, onCloseMobile, onLogout }: P
         <span className="px-2 text-xs font-semibold tracking-widest text-muted-foreground uppercase">
           Menu
         </span>
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={onCloseMobile}
           aria-label="Close menu"
           className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent"
         >
           <X className="size-4" />
-        </button>
+        </Button>
       </div>
 
       {NAV_ITEMS.map((item) => {
@@ -58,13 +61,14 @@ export function AppSidebar({ collapsed, mobileOpen, onCloseMobile, onLogout }: P
       })}
 
       <div className="mt-auto">
-        <button
+        <Button
+          variant="ghost"
           onClick={onLogout}
           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
         >
           <LogOut className="size-4.5 shrink-0" />
           <span className={cn(collapsed && "lg:hidden")}>Logout</span>
-        </button>
+        </Button>
       </div>
     </nav>
   );
@@ -82,7 +86,8 @@ export function AppSidebar({ collapsed, mobileOpen, onCloseMobile, onLogout }: P
 
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <button
+          <Button
+            variant="ghost"
             aria-label="Close menu overlay"
             className="absolute inset-0 bg-background/70 backdrop-blur-sm"
             onClick={onCloseMobile}

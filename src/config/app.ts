@@ -16,6 +16,8 @@ export const APP_CONFIG = {
  * same app_id, which is why the legacy OAuth flow below is keyed to it.
  */
 export const DERIV_CONFIG = {
+  // OAuth2 client ID issued by Deriv for this application.
+  // This is intentionally separate from the numeric legacy WebSocket app_id.
   appId: 1089,
   clientId: "341wtpayB6TTevM7ac4LR",
   redirectUri: "https://kocelkdmatch.lovable.app/oauth/callback",
@@ -26,7 +28,7 @@ export const DERIV_CONFIG = {
   tokenUrl: "https://auth.deriv.com/oauth2/token",
   apiBaseUrl: "https://api.derivws.com",
   wsUrl: "wss://ws.derivws.com/websockets/v3",
-  scopes: ["read", "trade", "payments", "admin"],
+  scopes: ["trade", "account_manage", "application_read", "payment"],
 } as const;
 
 /** Continuous Indices only — the sole market MATCHES contracts are offered on. */

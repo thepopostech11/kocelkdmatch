@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { clearStoredPkce, parseLegacyAccounts, readStoredPkce } from "@/lib/deriv/oauth";
+import { clearStoredPkce, readStoredPkce } from "@/lib/deriv/oauth";
 import { exchangeDerivCode, fetchDerivAccounts } from "@/lib/deriv/oauth.functions";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -17,6 +17,8 @@ export const Route = createFileRoute("/oauth/callback")({
       { name: "description", content: "Completing your secure Deriv authentication." },
       { property: "og:title", content: "Signing in — KOCEL DMATCH TOOL" },
       { property: "og:description", content: "Completing your secure Deriv authentication." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -48,30 +50,13 @@ function OAuthCallback() {
         return;
       }
 
-      // ---- Legacy Deriv flow: acct1/token1/cur1 ... arrive directly. ----
-      const legacy = parseLegacyAccounts(window.location.search);
-      if (legacy.length) {
-        setAccounts(legacy);
-        // The first account's token doubles as the session token so that
-        // `selectIsAuthenticated` passes; per-account tokens drive `authorize`.
-        setSession(legacy[0]!.token!, "Bearer", 60 * 60 * 12);
-        setOauth("connected");
-        notify(
-          "success",
-          "Signed in",
-          `${legacy.length} Deriv account${legacy.length > 1 ? "s" : ""} linked.`,
-        );
-        void navigate({ to: "/app/analysis", replace: true });
-        return;
-      }
-
       const stored = readStoredPkce();
       if (!code || !state || !stored.verifier) {
         setOauth("error");
         setError("Missing authorization code or PKCE verifier. Please sign in again.");
         return;
       }
-      if (state !== stored.state) {
+      if (!stored.state || state !== stored.state) {
         setOauth("error");
         setError("State mismatch detected. The sign-in attempt was rejected for your safety.");
         return;

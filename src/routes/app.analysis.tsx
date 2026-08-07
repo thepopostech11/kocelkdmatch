@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMarketSession } from "@/hooks/useMarket";
 import { AccountCard } from "@/components/account/AccountCard";
 import { LiveAccountStatus } from "@/components/account/LiveAccountStatus";
 import { SymbolControls } from "@/components/analysis/SymbolControls";
@@ -37,8 +36,6 @@ export const Route = createFileRoute("/app/analysis")({
 });
 
 function AnalysisPage() {
-  useMarketSession();
-
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-3 sm:p-4">
       <header>

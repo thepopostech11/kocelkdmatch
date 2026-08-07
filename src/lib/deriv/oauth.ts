@@ -10,18 +10,9 @@ import {
 
 type AuthMode = "login" | "registration";
 
-/**
- * Builds the Deriv authorization URL.
- *
- * We use the legacy OAuth endpoint because it redirects back with a WebSocket
- * API token for EVERY account the user owns (acct1/token1/cur1, acct2/...).
- * Those tokens are what `authorize` on the v3 socket expects, and they are what
- * makes real/demo account switching possible without a second round-trip.
- */
+/** Builds the Deriv OAuth2 Authorization Code + PKCE URL. */
 export async function buildAuthorizationUrl(mode: AuthMode = "login"): Promise<string> {
-  const params = new URLSearchParams({ app_id: String(DERIV_CONFIG.appId) });
-  if (mode === "registration") params.set("route", "signup");
-  return `${DERIV_CONFIG.legacyAuthorizeUrl}?${params.toString()}`;
+  return buildPkceAuthorizationUrl(mode);
 }
 
 /**
@@ -35,9 +26,6 @@ export async function buildPkceAuthorizationUrl(mode: AuthMode = "login"): Promi
 
   sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
   sessionStorage.setItem(OAUTH_STATE_KEY, state);
-  // Mirror into localStorage so the callback survives a brand-new tab.
-  localStorage.setItem(PKCE_VERIFIER_KEY, verifier);
-  localStorage.setItem(OAUTH_STATE_KEY, state);
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -82,15 +70,13 @@ export function parseLegacyAccounts(search: string): DerivAccount[] {
 }
 
 export function readStoredPkce() {
-  const verifier =
-    sessionStorage.getItem(PKCE_VERIFIER_KEY) ?? localStorage.getItem(PKCE_VERIFIER_KEY);
-  const state = sessionStorage.getItem(OAUTH_STATE_KEY) ?? localStorage.getItem(OAUTH_STATE_KEY);
+  // Deliberately tab-scoped: the verifier never persists beyond this OAuth tab.
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  const state = sessionStorage.getItem(OAUTH_STATE_KEY);
   return { verifier, state };
 }
 
 export function clearStoredPkce() {
-  [sessionStorage, localStorage].forEach((store) => {
-    store.removeItem(PKCE_VERIFIER_KEY);
-    store.removeItem(OAUTH_STATE_KEY);
-  });
+  sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  sessionStorage.removeItem(OAUTH_STATE_KEY);
 }

@@ -9,6 +9,8 @@ export const Route = createFileRoute("/app/manual-trade")({
       { name: "description", content: "Manual MATCHES trading interface for Deriv." },
       { property: "og:title", content: "Manual Trade — KOCEL DMATCH TOOL" },
       { property: "og:description", content: "Manual MATCHES trading interface for Deriv." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: ManualTradePage,
