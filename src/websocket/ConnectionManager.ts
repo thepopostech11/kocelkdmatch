@@ -1,5 +1,5 @@
 import { DERIV_CONFIG } from "@/config/app";
-import { issueDerivWebSocketUrl } from "@/lib/deriv/oauth.functions";
+import { fetchDerivAccounts, issueDerivWebSocketUrl } from "@/lib/deriv/oauth.functions";
 import { selectActiveAccount, useAuthStore } from "@/stores/authStore";
 import { WebSocketManager } from "./WebSocketManager";
 
@@ -47,8 +47,17 @@ class ConnectionManagerImpl {
    * legacy API tokens continue to use the normal `authorize` message.
    */
   async connectAuthenticated(): Promise<WebSocketManager> {
-    const state = useAuthStore.getState();
-    const account = selectActiveAccount(state);
+    let state = useAuthStore.getState();
+    let account = selectActiveAccount(state);
+
+    // Repair sessions created before the REST response's `data` envelope was
+    // handled. The existing OAuth2 access token remains unchanged.
+    if (state.accessToken && !account) {
+      const accounts = await fetchDerivAccounts({ data: { accessToken: state.accessToken } });
+      useAuthStore.getState().setAccounts(accounts);
+      state = useAuthStore.getState();
+      account = selectActiveAccount(state);
+    }
     const accountToken = account?.token;
 
     if (accountToken) {
