@@ -89,6 +89,8 @@ class TradingEngineImpl {
   private attach(socket: WebSocketManager) {
     if (this.attachedSocket === socket && this.unsubscribe) return;
     this.unsubscribe?.();
+    // A new socket means the previous authorization no longer applies.
+    if (this.attachedSocket !== socket) this.authorizedToken = null;
     this.attachedSocket = socket;
     this.unsubscribe = socket.subscribe((data) => this.handle(data));
   }
