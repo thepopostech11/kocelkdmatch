@@ -422,18 +422,28 @@ class MarketEngineImpl {
     if (error) {
       const message = error.message ?? error.code ?? "Deriv API error";
       this.diagnostics = { ...this.diagnostics, lastError: message };
-      if (error.code === "InvalidSymbol" || error.code === "MarketIsClosed") {
+      if (error.code === "MarketIsClosed") {
         this.diagnostics = { ...this.diagnostics, feed: "error" };
+      }
+      // Streaming rejected (landing-company / permission gating): keep real
+      // Deriv data flowing through the polling feed instead of erroring out.
+      if (
+        error.code === "InvalidSymbol" ||
+        error.code === "StreamingNotAllowed" ||
+        error.code === "PermissionDenied"
+      ) {
+        this.startPollFeed();
       }
       if (type === "authorize" || error.code === "InvalidToken") {
         this.diagnostics = { ...this.diagnostics, authorised: false };
         this.account = { ...this.account, authorised: false, status: "unauthorised" };
       }
       // A failed history request should immediately fall back.
-      if (type === "history" || type === "candles") this.startFallbackFeed();
+      if ((type === "history" || type === "candles") && !this.polling) this.startFallbackFeed();
       this.emit();
       return;
     }
+
 
     if (type === "active_symbols") {
       const list = (data["active_symbols"] as Record<string, unknown>[] | undefined) ?? [];
@@ -567,24 +577,48 @@ class MarketEngineImpl {
       const times = history?.times ?? [];
 
       if (!prices.length) {
-        this.startFallbackFeed();
+        if (!this.polling) this.startFallbackFeed();
         return;
       }
 
       this.pipSize = this.pipFor(this.symbol);
-      this.buffer = prices.map((quote, i) => ({
+      const incoming = prices.map((quote, i) => ({
         epoch: times[i] ?? Date.now() / 1000,
         quote,
         digit: extractDigit(quote, this.pipSize),
         pipSize: this.pipSize,
         receivedAt: Date.now(),
       }));
+
+      if (this.polling && this.buffer.length) {
+        // Merge only genuinely new quotes from the poll response.
+        const lastEpoch = this.buffer[this.buffer.length - 1]?.epoch ?? 0;
+        const fresh = incoming.filter((t) => t.epoch > lastEpoch);
+        if (!fresh.length) return;
+        this.buffer = [...this.buffer, ...fresh].slice(-MAX_BUFFER);
+        this.processed += fresh.length;
+        fresh.forEach(() => this.recentTimes.push(Date.now()));
+        const latest = fresh[fresh.length - 1]!;
+        this.diagnostics = {
+          ...this.diagnostics,
+          feed: "streaming",
+          feedMode: "poll",
+          bufferSize: this.buffer.length,
+          lastTickAt: Date.now(),
+          serverTime: latest.epoch * 1000,
+        };
+        this.recompute(latest);
+        this.tickListeners.forEach((l) => l(latest));
+        return;
+      }
+
+      this.buffer = incoming;
       this.processed = this.buffer.length;
       const sub = data["subscription"] as { id?: string } | undefined;
       this.diagnostics = {
         ...this.diagnostics,
         feed: "streaming",
-        feedMode: "history",
+        feedMode: this.polling ? "poll" : "history",
         subscriptionId: sub?.id ?? this.diagnostics.subscriptionId,
         bufferSize: this.buffer.length,
         lastTickAt: Date.now(),
@@ -592,6 +626,7 @@ class MarketEngineImpl {
       this.recompute();
       return;
     }
+
 
     if (type === "tick") {
       const t = data["tick"] as Record<string, unknown> | undefined;
