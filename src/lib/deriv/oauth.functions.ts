@@ -12,6 +12,11 @@ type DerivRawAccount = {
   balance?: number | string;
 };
 
+type DerivAccountsResponse = {
+  data?: DerivRawAccount[];
+  accounts?: DerivRawAccount[];
+};
+
 export type DerivTokenResult = {
   accessToken: string;
   tokenType: string;
@@ -66,11 +71,14 @@ export const fetchDerivAccounts = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ accessToken: z.string().min(10) }).parse(data))
   .handler(async ({ data }) => {
     const res = await fetch(`${DERIV_CONFIG.apiBaseUrl}/trading/v1/options/accounts`, {
-      headers: { Authorization: `Bearer ${data.accessToken}` },
+      headers: {
+        Authorization: `Bearer ${data.accessToken}`,
+        "Deriv-App-ID": DERIV_CONFIG.clientId,
+      },
     });
     if (!res.ok) throw new Error(`Deriv accounts request failed (HTTP ${res.status})`);
-    const json = (await res.json()) as { accounts?: DerivRawAccount[] } | DerivRawAccount[];
-    const list = Array.isArray(json) ? json : (json.accounts ?? []);
+    const json = (await res.json()) as DerivAccountsResponse | DerivRawAccount[];
+    const list = Array.isArray(json) ? json : (json.data ?? json.accounts ?? []);
     return list.map((a) => ({
       loginid: String(a.loginid ?? a.account_id ?? ""),
       currency: String(a.currency ?? "USD"),
@@ -78,4 +86,43 @@ export const fetchDerivAccounts = createServerFn({ method: "POST" })
       isVirtual: Boolean(a.is_virtual ?? a.account_type === "demo"),
       balance: Number(a.balance ?? 0),
     }));
+  });
+
+/** Issues the selected Options account's short-lived authenticated WebSocket URL. */
+export const issueDerivWebSocketUrl = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        accessToken: z.string().min(10),
+        accountId: z.string().min(1).max(128),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const accountId = encodeURIComponent(data.accountId);
+    const res = await fetch(
+      `${DERIV_CONFIG.apiBaseUrl}/trading/v1/options/accounts/${accountId}/otp`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.accessToken}`,
+          "Deriv-App-ID": DERIV_CONFIG.clientId,
+        },
+      },
+    );
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: { url?: string };
+      error?: { message?: string } | string;
+      message?: string;
+    };
+    const url = json.data?.url;
+    if (!res.ok || !url) {
+      const detail =
+        typeof json.error === "string"
+          ? json.error
+          : (json.error?.message ?? json.message ?? `HTTP ${res.status}`);
+      throw new Error(`Deriv WebSocket authorization failed: ${detail}`);
+    }
+    if (!url.startsWith("wss://")) throw new Error("Deriv returned an invalid WebSocket URL.");
+    return { url };
   });
