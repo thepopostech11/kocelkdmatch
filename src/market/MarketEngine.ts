@@ -89,6 +89,8 @@ class MarketEngineImpl {
   private rateTimer: ReturnType<typeof setInterval> | null = null;
   private stallTimer: ReturnType<typeof setInterval> | null = null;
   private historyTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private polling = false;
   private pingSentAt = 0;
   private starting: Promise<void> | null = null;
   private reconnectAttempts = 0;
