@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { clearStoredPkce, readStoredPkce } from "@/lib/deriv/oauth";
+import { clearStoredPkce, parseLegacyAccounts, readStoredPkce } from "@/lib/deriv/oauth";
 import { exchangeDerivCode, fetchDerivAccounts } from "@/lib/deriv/oauth.functions";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -48,6 +48,23 @@ function OAuthCallback() {
         return;
       }
 
+      // ---- Legacy Deriv flow: acct1/token1/cur1 ... arrive directly. ----
+      const legacy = parseLegacyAccounts(window.location.search);
+      if (legacy.length) {
+        setAccounts(legacy);
+        // The first account's token doubles as the session token so that
+        // `selectIsAuthenticated` passes; per-account tokens drive `authorize`.
+        setSession(legacy[0]!.token!, "Bearer", 60 * 60 * 12);
+        setOauth("connected");
+        notify(
+          "success",
+          "Signed in",
+          `${legacy.length} Deriv account${legacy.length > 1 ? "s" : ""} linked.`,
+        );
+        void navigate({ to: "/app/analysis", replace: true });
+        return;
+      }
+
       const stored = readStoredPkce();
       if (!code || !state || !stored.verifier) {
         setOauth("error");
@@ -59,6 +76,7 @@ function OAuthCallback() {
         setError("State mismatch detected. The sign-in attempt was rejected for your safety.");
         return;
       }
+
 
       try {
         setOauth("connecting");
