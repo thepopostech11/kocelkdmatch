@@ -43,6 +43,7 @@ class BotEngineImpl {
     if (stake > MarketEngine.account.availableBalance) {
       throw new Error("The selected account does not have enough available balance.");
     }
+    this.assertRiskLimits(stake);
     const symbols = MarketEngine.symbols.filter((symbol) => symbol.open);
     if (!symbols.length) throw new Error("Live Deriv markets are not available yet.");
 
@@ -130,6 +131,12 @@ class BotEngineImpl {
       this.fail("Insufficient balance. No order was submitted.");
       return;
     }
+    try {
+      this.assertRiskLimits(stake);
+    } catch (error) {
+      this.fail(error instanceof Error ? error.message : "A configured risk limit was reached.");
+      return;
+    }
 
     this.submitting = true;
     this.status = "submitting";
@@ -177,6 +184,8 @@ class BotEngineImpl {
     const stats = { ...store.stats };
     stats.realTradesExecuted += 1;
     stats.totalPnl += event.trade.profit;
+    stats.confidenceTotal += this.locked?.prediction?.confidence ?? 0;
+    stats.agreementTotal += this.locked?.prediction?.strategyAgreement ?? 0;
     if (event.trade.profit > 0) stats.wins += 1;
     else stats.losses += 1;
     store.setStats(stats);
@@ -208,6 +217,17 @@ class BotEngineImpl {
     this.running = false;
     useBotStore.getState().addActivity(message);
     this.emit();
+  }
+
+  private assertRiskLimits(stake: number) {
+    const { history, risk } = useTradeStore.getState();
+    const start = new Date().setHours(0, 0, 0, 0);
+    const todayPnl = history
+      .filter((trade) => trade.closedAt >= start)
+      .reduce((total, trade) => total + trade.profit, 0);
+    if (stake > risk.maxStakeWarning) throw new Error("Stake exceeds the configured bot safety limit.");
+    if (todayPnl >= risk.dailyProfitLimit) throw new Error("Daily profit limit reached. The bot will not open a new trade.");
+    if (todayPnl <= -risk.dailyLossLimit) throw new Error("Daily loss limit reached. The bot will not open a new trade.");
   }
 
   subscribe(listener: Listener) {

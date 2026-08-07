@@ -164,6 +164,12 @@ class MarketEngineImpl {
     this.token = token;
     this.window = window;
     if (this.starting) await this.starting;
+    if (this.socket?.isOpen) {
+      this.useToken(token);
+      if (this.symbol !== symbol) this.subscribeSymbol(symbol);
+      this.setWindow(window);
+      return;
+    }
     this.starting = this.boot(symbol);
     await this.starting;
     this.starting = null;
