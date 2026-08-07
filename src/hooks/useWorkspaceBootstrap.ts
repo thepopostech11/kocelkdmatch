@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketEngine } from "@/market/MarketEngine";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useAuthStore } from "@/stores/authStore";
-import { DERIV_CONFIG } from "@/config/app";
 import { selectActiveToken } from "@/stores/authStore";
 
 const STAGES = [
@@ -17,7 +16,7 @@ const STAGES = [
 /** Runs the post-login boot sequence and reports smooth progress. */
 export function useWorkspaceBootstrap() {
   const [progress, setProgress] = useState(0);
-  const [stage, setStage] = useState(STAGES[0]!);
+  const [stage, setStage] = useState("Initializing modules");
   const [done, setDone] = useState(false);
   const started = useRef(false);
 
@@ -40,11 +39,11 @@ export function useWorkspaceBootstrap() {
         setTimeout(resolve, 420);
       });
 
-    await tick(12, STAGES[0]!);
+    await tick(12, "Initializing modules");
     setOauth("connected");
-    await tick(28, STAGES[1]!);
+    await tick(28, "Authenticating session");
 
-    setStage(STAGES[2]!);
+    setStage("Connecting to Deriv servers");
     setWebsocket("connecting");
     const started = performance.now();
     try {
@@ -53,7 +52,7 @@ export function useWorkspaceBootstrap() {
       setWebsocket("connected");
       setProgress(52);
 
-      await tick(70, STAGES[3]!);
+      await tick(70, "Opening live market feed");
       setMarketFeed("connecting");
       const unsubscribe = MarketEngine.onTick((t) => {
         if (t.quote) {
@@ -66,7 +65,7 @@ export function useWorkspaceBootstrap() {
         setMarketFeed("connected");
         setLastTick(MarketEngine.snapshot.live.currentPrice);
       }
-      await tick(88, STAGES[4]!);
+      await tick(88, "Streaming ticks & statistics");
       unsubscribe();
     } catch {
       setWebsocket("error");
@@ -74,7 +73,7 @@ export function useWorkspaceBootstrap() {
       await tick(88, "Market feed unavailable — continuing offline");
     }
 
-    await tick(100, STAGES[5]!);
+    await tick(100, "Preparing workspace");
     setBootstrapped(true);
     setTimeout(() => setDone(true), 350);
   }, [
