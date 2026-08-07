@@ -1,7 +1,6 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
-import { AppSidebar } from "@/components/layout/AppSidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { StatusBar } from "@/components/layout/StatusBar";
 import { BootstrapLoader } from "@/components/common/BootstrapLoader";
@@ -19,8 +18,7 @@ export const Route = createFileRoute("/app")({
 
 function AppLayout() {
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+
   const authenticated = useAuthStore(selectIsAuthenticated);
   const logout = useAuthStore((s) => s.logout);
   const notify = useNotificationStore((s) => s.push);
@@ -48,25 +46,14 @@ function AppLayout() {
         {!done && <BootstrapLoader progress={progress} stage={stage} />}
       </AnimatePresence>
 
-      <TopBar
-        onToggleSidebar={() => setCollapsed((c) => !c)}
-        onOpenMobile={() => setMobileOpen(true)}
-        onLogout={handleLogout}
-      />
+      <TopBar onLogout={handleLogout} />
 
-      <div className="flex min-h-0 flex-1">
-        <AppSidebar
-          collapsed={collapsed}
-          mobileOpen={mobileOpen}
-          onCloseMobile={() => setMobileOpen(false)}
-          onLogout={handleLogout}
-        />
-        <main className="min-w-0 flex-1 overflow-y-auto">
-          <Outlet />
-        </main>
-      </div>
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <Outlet />
+      </main>
 
       <StatusBar />
     </div>
   );
 }
+
