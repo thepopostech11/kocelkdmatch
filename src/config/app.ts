@@ -10,7 +10,7 @@ export const APP_CONFIG = {
 /**
  * Deriv application configuration.
  *
- * `appId` MUST be the numeric application ID registered at
+ * `appId` MUST be the application ID registered at
  * https://api.deriv.com/dashboard for this app. The Deriv WebSocket API
  * (`authorize`, `buy`, `proposal`) rejects tokens that were not issued for the
  * same app_id, which is why the legacy OAuth flow below is keyed to it.
