@@ -70,6 +70,7 @@ export function parseLegacyAccounts(search: string): DerivAccount[] {
 }
 
 export function readStoredPkce() {
+  // Deliberately tab-scoped: the verifier never persists beyond this OAuth tab.
   const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
   const state = sessionStorage.getItem(OAUTH_STATE_KEY);
   return { verifier, state };
