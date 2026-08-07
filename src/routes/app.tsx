@@ -10,6 +10,7 @@ import { useThemeEffect } from "@/hooks/useThemeEffect";
 import { selectIsAuthenticated, useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
+import { useMarketSession } from "@/hooks/useMarket";
 
 export const Route = createFileRoute("/app")({
   ssr: false,
@@ -24,6 +25,7 @@ function AppLayout() {
   const logout = useAuthStore((s) => s.logout);
   const notify = useNotificationStore((s) => s.push);
   const { progress, stage, done } = useWorkspaceBootstrap();
+  useMarketSession();
 
   useThemeEffect();
 

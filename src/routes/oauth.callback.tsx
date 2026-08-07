@@ -17,6 +17,8 @@ export const Route = createFileRoute("/oauth/callback")({
       { name: "description", content: "Completing your secure Deriv authentication." },
       { property: "og:title", content: "Signing in — KOCEL DMATCH TOOL" },
       { property: "og:description", content: "Completing your secure Deriv authentication." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
       { name: "robots", content: "noindex" },
     ],
   }),

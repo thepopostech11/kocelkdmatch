@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConnectionManager } from "@/websocket/ConnectionManager";
+import { MarketEngine } from "@/market/MarketEngine";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useAuthStore } from "@/stores/authStore";
 import { DERIV_CONFIG } from "@/config/app";
+import { selectActiveToken } from "@/stores/authStore";
 
 const STAGES = [
   "Initializing modules",
@@ -28,6 +29,7 @@ export function useWorkspaceBootstrap() {
   const setLastTick = useConnectionStore((s) => s.setLastTick);
   const setServerTime = useConnectionStore((s) => s.setServerTime);
   const bootstrapped = useAuthStore((s) => s.bootstrapped);
+  const token = useAuthStore(selectActiveToken);
   const setBootstrapped = useAuthStore((s) => s.setBootstrapped);
 
   const run = useCallback(async () => {
@@ -46,23 +48,26 @@ export function useWorkspaceBootstrap() {
     setWebsocket("connecting");
     const started = performance.now();
     try {
-      const socket = await ConnectionManager.connect(DERIV_CONFIG.appId);
+      await MarketEngine.start(token, symbol, 100);
       setLatency(Math.round(performance.now() - started));
       setWebsocket("connected");
       setProgress(52);
 
       await tick(70, STAGES[3]!);
       setMarketFeed("connecting");
-      socket.subscribe((data) => {
-        const t = data["tick"] as { quote?: number; epoch?: number } | undefined;
-        if (t?.quote) {
+      const unsubscribe = MarketEngine.onTick((t) => {
+        if (t.quote) {
           setMarketFeed("connected");
           setLastTick(t.quote);
-          if (t.epoch) setServerTime(t.epoch * 1000);
+          setServerTime(t.epoch * 1000);
         }
       });
-      socket.send({ ticks: symbol, subscribe: 1 });
+      if (MarketEngine.snapshot.live.currentPrice) {
+        setMarketFeed("connected");
+        setLastTick(MarketEngine.snapshot.live.currentPrice);
+      }
       await tick(88, STAGES[4]!);
+      unsubscribe();
     } catch {
       setWebsocket("error");
       setMarketFeed("error");
@@ -81,6 +86,7 @@ export function useWorkspaceBootstrap() {
     setServerTime,
     setBootstrapped,
     symbol,
+    token,
   ]);
 
   useEffect(() => {
