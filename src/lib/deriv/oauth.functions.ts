@@ -7,6 +7,16 @@ const exchangeSchema = z.object({
   codeVerifier: z.string().min(20).max(256),
 });
 
+type DerivRawAccount = {
+  loginid?: string;
+  account_id?: string;
+  currency?: string;
+  account_type?: string;
+  type?: string;
+  is_virtual?: boolean;
+  balance?: number | string;
+};
+
 export type DerivTokenResult = {
   accessToken: string;
   tokenType: string;
