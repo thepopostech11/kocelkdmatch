@@ -37,6 +37,7 @@ type SymbolState = {
   lastTickAt: number | null;
   calibration: ModelCalibrationEngine;
   snapshot: AnalysisSnapshot;
+  subscriptionId: string | null;
 };
 
 type Listener = () => void;
@@ -66,6 +67,7 @@ export class MultiSymbolScanner {
         lastTickAt: null,
         calibration: new ModelCalibrationEngine(),
         snapshot: this.emptySnapshot(meta.symbol),
+        subscriptionId: null,
       });
       this.socket.send({
         ticks_history: meta.symbol,
@@ -81,8 +83,7 @@ export class MultiSymbolScanner {
 
   stop() {
     for (const state of this.states.values()) {
-      this.socket?.send({ forget_all: "ticks" });
-      break;
+      if (state.subscriptionId) this.socket?.send({ forget: state.subscriptionId });
     }
     this.unsubscribe?.();
     this.unsubscribe = null;
@@ -115,7 +116,9 @@ export class MultiSymbolScanner {
     if (data["error"]) return;
 
     if (type === "history") {
-      const passthrough = data["passthrough"] as { scanner_symbol?: string } | undefined;
+      const echo = data["echo_req"] as { passthrough?: { scanner_symbol?: string } } | undefined;
+      const passthrough =
+        (data["passthrough"] as { scanner_symbol?: string } | undefined) ?? echo?.passthrough;
       const symbol = passthrough?.scanner_symbol;
       if (!symbol) return;
       const state = this.states.get(symbol);
@@ -132,6 +135,8 @@ export class MultiSymbolScanner {
       }));
       state.processed = state.buffer.length;
       state.lastTickAt = Date.now();
+      const subscription = data["subscription"] as { id?: string } | undefined;
+      state.subscriptionId = subscription?.id ?? state.subscriptionId;
       this.recompute(state);
       return;
     }
@@ -155,6 +160,8 @@ export class MultiSymbolScanner {
     if (state.buffer.length > BUFFER_SIZE) state.buffer.shift();
     state.processed += 1;
     state.lastTickAt = Date.now();
+    const subscription = data["subscription"] as { id?: string } | undefined;
+    state.subscriptionId = subscription?.id ?? state.subscriptionId;
     this.recompute(state, tick);
   }
 
