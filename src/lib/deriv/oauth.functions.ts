@@ -57,5 +57,5 @@ export const fetchDerivAccounts = createServerFn({ method: "POST" })
       headers: { Authorization: `Bearer ${data.accessToken}` },
     });
     if (!res.ok) throw new Error(`Deriv accounts request failed (HTTP ${res.status})`);
-    return (await res.json()) as unknown;
+    return (await res.json()) as Record<string, unknown>;
   });
