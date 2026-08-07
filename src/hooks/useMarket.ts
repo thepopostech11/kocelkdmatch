@@ -1,7 +1,8 @@
-/** React bindings for the single MarketEngine instance. */
+/** React bindings for the single MarketEngine + TradingEngine instances. */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { MarketEngine } from "@/market/MarketEngine";
-import { useAuthStore } from "@/stores/authStore";
+import { TradingEngine } from "@/market/TradingEngine";
+import { selectActiveToken, useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 
 function useEngineVersion() {
@@ -12,9 +13,23 @@ function useEngineVersion() {
   );
 }
 
-/** Boots the engine once for the authenticated session. */
+function useTradingVersion() {
+  return useSyncExternalStore(
+    (cb) => TradingEngine.subscribe(cb),
+    () => TradingEngine.version,
+    () => 0,
+  );
+}
+
+/**
+ * Boots the engine once for the authenticated session.
+ * Safe to call from multiple pages — the engine itself is a singleton, so the
+ * Analysis page and the Manual Trade page share one socket and one buffer.
+ */
 export function useMarketSession() {
-  const token = useAuthStore((s) => s.accessToken);
+  const token = useAuthStore(selectActiveToken);
+  const activeLoginId = useAuthStore((s) => s.activeLoginId);
+  const mergeAccounts = useAuthStore((s) => s.mergeAccounts);
   const symbol = useConnectionStore((s) => s.symbol);
   const tickWindow = useConnectionStore((s) => s.tickWindow);
   const setWebsocket = useConnectionStore((s) => s.setWebsocket);
@@ -27,7 +42,12 @@ export function useMarketSession() {
     void MarketEngine.start(token, symbol, tickWindow);
     // Symbol/window changes are handled by the effects below (no re-boot).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
+
+  // Switching accounts re-authorizes on the SAME socket.
+  useEffect(() => {
+    MarketEngine.useToken(token);
+  }, [token, activeLoginId]);
 
   useEffect(() => {
     if (MarketEngine.diagnostics.symbol !== symbol) MarketEngine.subscribeSymbol(symbol);
@@ -38,15 +58,25 @@ export function useMarketSession() {
   }, [tickWindow]);
 
   const version = useEngineVersion();
+
   useEffect(() => {
     const d = MarketEngine.diagnostics;
-    setWebsocket(d.socket === "connected" ? "connected" : d.socket === "error" ? "error" : "connecting");
-    setMarketFeed(d.feed === "streaming" ? "connected" : d.feed === "error" ? "error" : "connecting");
+    setWebsocket(
+      d.socket === "connected" ? "connected" : d.socket === "error" ? "error" : "connecting",
+    );
+    setMarketFeed(
+      d.feed === "streaming" ? "connected" : d.feed === "error" ? "error" : "connecting",
+    );
     setLatency(d.latency);
     if (d.serverTime) setServerTime(d.serverTime);
     const last = MarketEngine.snapshot.live.currentPrice;
     if (last) setLastTick(last);
   }, [version, setWebsocket, setMarketFeed, setLatency, setServerTime, setLastTick]);
+
+  // Keep the persisted account list in sync with `authorize`.account_list.
+  useEffect(() => {
+    if (MarketEngine.accounts.length) mergeAccounts(MarketEngine.accounts);
+  }, [version, mergeAccounts]);
 }
 
 export function useAnalysisSnapshot() {
@@ -64,6 +94,18 @@ export function useDiagnostics() {
   return MarketEngine.diagnostics;
 }
 
+/** Continuous Indices resolved from the `active_symbols` handshake. */
+export function useSymbolCatalogue() {
+  useEngineVersion();
+  return MarketEngine.symbols;
+}
+
+/** Last N digits for the live tape, newest last. */
+export function useDigitTape(count = 100) {
+  useEngineVersion();
+  return MarketEngine.recentDigits(count);
+}
+
 export function usePredictionState() {
   useEngineVersion();
   const predict = useCallback(() => MarketEngine.predict(), []);
@@ -73,4 +115,9 @@ export function usePredictionState() {
 export function useCalibration() {
   useEngineVersion();
   return MarketEngine.calibration;
+}
+
+export function useOpenTrades() {
+  useTradingVersion();
+  return TradingEngine.openTrades;
 }
