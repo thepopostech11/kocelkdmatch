@@ -67,7 +67,7 @@ export type Diagnostics = {
   tradingPermission: boolean;
   lastError: string | null;
   symbolsLoaded: number;
-  feedMode: "history" | "fallback" | "none";
+  feedMode: "history" | "fallback" | "poll" | "none";
   reconnects: number;
 };
 
@@ -312,6 +312,44 @@ class MarketEngineImpl {
     socket.send({ ticks: this.symbol, subscribe: 1 });
     this.emit();
   }
+
+  /**
+   * Last-resort live feed: Deriv rejects *streaming* subscriptions for symbols
+   * outside the session's landing company, but non-subscribing `ticks_history`
+   * still returns real quotes. Poll it so the workspace always shows genuine
+   * Deriv data instead of an error (never synthetic/fake ticks).
+   */
+  private startPollFeed() {
+    const socket = this.socket;
+    if (!socket) return;
+    if (this.pollTimer) return;
+    this.polling = true;
+    this.diagnostics = {
+      ...this.diagnostics,
+      feedMode: "poll",
+      feed: this.buffer.length ? "streaming" : "connecting",
+      lastError: "Streaming unavailable for this account — polling live Deriv quotes",
+    };
+    const poll = () => {
+      if (!this.socket?.isOpen) return;
+      this.socket.send({
+        ticks_history: this.symbol,
+        end: "latest",
+        count: this.buffer.length ? 30 : MAX_BUFFER,
+        style: "ticks",
+      });
+    };
+    poll();
+    this.pollTimer = setInterval(poll, 1000);
+    this.emit();
+  }
+
+  private stopPollFeed() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+    this.polling = false;
+  }
+
 
   private pipFor(symbol: string) {
     const meta = this.symbols.find((s) => s.symbol === symbol);
