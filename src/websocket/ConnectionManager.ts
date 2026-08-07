@@ -60,7 +60,7 @@ class ConnectionManagerImpl {
     }
     const accountToken = account?.token;
 
-    if (accountToken) {
+    if (account && accountToken) {
       if (this.manager?.isOpen && this.sessionMode === "legacy-token") return this.manager;
       this.disconnect();
       const socket = await this.connect();
