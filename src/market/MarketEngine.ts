@@ -23,6 +23,7 @@ import { ModelCalibrationEngine } from "@/analysis/calibration";
 import { buildPrediction, strategyAgreement } from "@/analysis/prediction";
 import type { AnalysisSnapshot, Prediction, Tick } from "@/analysis/types";
 import type { DerivAccount } from "@/types";
+import { selectActiveAccount, useAuthStore } from "@/stores/authStore";
 
 const MAX_BUFFER = 1000;
 /** If no tick arrives within this window we switch to the fallback stream. */
@@ -182,7 +183,7 @@ class MarketEngineImpl {
     this.emit();
     try {
       ConnectionManager.onDrop = () => this.handleDrop();
-      const socket = await ConnectionManager.connect(DERIV_CONFIG.appId);
+      const socket = await ConnectionManager.connectAuthenticated();
       this.socket = socket;
       this.reconnectAttempts = 0;
       this.diagnostics = { ...this.diagnostics, socket: "connected", lastError: null };
@@ -192,8 +193,14 @@ class MarketEngineImpl {
 
       // 1. Active symbols handshake — authoritative pip sizes and availability.
       socket.send({ active_symbols: "brief", product_type: "basic" });
-      // 2. Authorize (populates account, balance and account_list).
-      if (this.token) socket.send({ authorize: this.token });
+      // 2. OAuth2 sockets arrive authenticated through their short-lived OTP
+      // URL. Legacy API-token sessions still authorize with a WS message.
+      if (ConnectionManager.mode === "oauth2-otp") {
+        this.hydrateOauthAccount();
+        socket.send({ balance: 1, subscribe: 1 });
+      } else if (this.token) {
+        socket.send({ authorize: this.token });
+      }
 
       this.startHeartbeat();
       this.startRateSampler();
@@ -239,15 +246,53 @@ class MarketEngineImpl {
 
   /** Re-authorize on a different account without tearing down the socket. */
   useToken(token: string | null) {
-    if (token === this.token) return;
+    const activeAccount = selectActiveAccount(useAuthStore.getState());
+    const oauthAccountChanged =
+      ConnectionManager.mode === "oauth2-otp" &&
+      Boolean(activeAccount?.loginid) &&
+      ConnectionManager.accountId !== activeAccount?.loginid;
+    if (token === this.token && !oauthAccountChanged) return;
     this.token = token;
     this.account = { ...this.account, authorised: false };
     this.diagnostics = { ...this.diagnostics, authorised: false };
+    if (oauthAccountChanged) {
+      ConnectionManager.disconnect();
+      this.socket = null;
+      void this.boot(this.symbol);
+      return;
+    }
     const socket = this.socket;
     if (socket && token) {
       socket.send({ forget_all: "balance" });
       socket.send({ authorize: token });
     }
+    this.emit();
+  }
+
+  private hydrateOauthAccount() {
+    const state = useAuthStore.getState();
+    const active = selectActiveAccount(state);
+    if (!active) return;
+    this.accounts = state.accounts;
+    this.account = {
+      fullname: active.loginid,
+      loginid: active.loginid,
+      email: "",
+      currency: active.currency,
+      isVirtual: active.isVirtual,
+      landingCompany: "",
+      balance: active.balance,
+      availableBalance: active.balance,
+      status: "active",
+      scopes: ["trade"],
+      authorised: true,
+    };
+    this.diagnostics = {
+      ...this.diagnostics,
+      authorised: true,
+      tradingPermission: true,
+      lastError: null,
+    };
     this.emit();
   }
 

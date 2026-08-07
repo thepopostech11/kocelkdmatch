@@ -60,8 +60,7 @@ class TradingEngineImpl {
   private authorizedToken: string | null = null;
 
   private async socket(): Promise<WebSocketManager> {
-    const existing = ConnectionManager.socket;
-    const socket = existing?.isOpen ? existing : await ConnectionManager.connect();
+    const socket = await ConnectionManager.connectAuthenticated();
     this.attach(socket);
     await this.ensureAuthorized(socket);
     return socket;
@@ -74,6 +73,7 @@ class TradingEngineImpl {
    * with the active account's WebSocket token before every order path.
    */
   private async ensureAuthorized(socket: WebSocketManager) {
+    if (ConnectionManager.mode === "oauth2-otp") return;
     const token = selectActiveToken(useAuthStore.getState());
     if (!token) throw new Error("No authorised Deriv account. Sign in with Deriv again.");
     if (this.authorizedToken === token) return;
