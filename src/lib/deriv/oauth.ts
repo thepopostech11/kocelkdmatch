@@ -11,29 +11,15 @@ import {
 type AuthMode = "login" | "registration";
 
 /**
- * Builds the Deriv authorization URL.
- *
- * The legacy OAuth endpoint is used on purpose: it redirects back with
- * `acct1/token1/cur1...`, i.e. a ready-to-use WebSocket API token per account.
- * The newer auth.deriv.com access token is a REST bearer token that the
- * WebSocket `authorize` call rejects, which is what previously left the
- * workspace on "Authorised: No" (no balance, no trading permission).
+ * Builds the Deriv authorization URL using OAuth 2.0 Authorization Code + PKCE
+ * (auth.deriv.com), exactly as documented by Deriv. `code_verifier` and
+ * `state` are stored in sessionStorage before the redirect.
  */
 export async function buildAuthorizationUrl(mode: AuthMode = "login"): Promise<string> {
-  const params = new URLSearchParams({
-    app_id: String(DERIV_CONFIG.appId),
-    l: "EN",
-    brand: "deriv",
-    redirect_uri: DERIV_CONFIG.redirectUri,
-  });
-  if (mode === "registration") params.set("route", "signup");
-  return `${DERIV_CONFIG.legacyAuthorizeUrl}?${params.toString()}`;
+  return buildPkceAuthorizationUrl(mode);
 }
 
-/**
- * Builds an OAuth2 + PKCE authorization URL. Retained for deployments that are
- * registered against the newer auth.deriv.com endpoint.
- */
+/** OAuth2 + PKCE authorization URL. */
 export async function buildPkceAuthorizationUrl(mode: AuthMode = "login"): Promise<string> {
   const verifier = generateCodeVerifier();
   const challenge = await deriveCodeChallenge(verifier);
@@ -50,11 +36,14 @@ export async function buildPkceAuthorizationUrl(mode: AuthMode = "login"): Promi
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
+    // Legacy V1 app id, so Deriv can route users of the legacy platform.
+    app_id: String(DERIV_CONFIG.appId),
   });
   if (mode === "registration") params.set("prompt", "registration");
 
   return `${DERIV_CONFIG.authorizeUrl}?${params.toString()}`;
 }
+
 
 /**
  * Parses the legacy Deriv redirect: ?acct1=CR1&token1=a1-x&cur1=USD&acct2=...
