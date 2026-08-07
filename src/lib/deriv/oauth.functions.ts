@@ -57,5 +57,13 @@ export const fetchDerivAccounts = createServerFn({ method: "POST" })
       headers: { Authorization: `Bearer ${data.accessToken}` },
     });
     if (!res.ok) throw new Error(`Deriv accounts request failed (HTTP ${res.status})`);
-    return (await res.json()) as Record<string, unknown>;
+    const json = (await res.json()) as { accounts?: DerivRawAccount[] } | DerivRawAccount[];
+    const list = Array.isArray(json) ? json : (json.accounts ?? []);
+    return list.map((a) => ({
+      loginid: String(a.loginid ?? a.account_id ?? ""),
+      currency: String(a.currency ?? "USD"),
+      accountType: String(a.account_type ?? a.type ?? "real"),
+      isVirtual: Boolean(a.is_virtual ?? a.account_type === "demo"),
+      balance: Number(a.balance ?? 0),
+    }));
   });
