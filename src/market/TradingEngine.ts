@@ -8,6 +8,7 @@
  */
 import { ConnectionManager } from "@/websocket/ConnectionManager";
 import type { WebSocketManager } from "@/websocket/WebSocketManager";
+import { selectActiveToken, useAuthStore } from "@/stores/authStore";
 
 export type ProposalQuote = {
   payout: number;
@@ -56,15 +57,33 @@ class TradingEngineImpl {
   version = 0;
   lastError: string | null = null;
 
+  private authorizedToken: string | null = null;
+
   private async socket(): Promise<WebSocketManager> {
     const existing = ConnectionManager.socket;
-    if (existing?.isOpen) {
-      this.attach(existing);
-      return existing;
-    }
-    const socket = await ConnectionManager.connect();
+    const socket = existing?.isOpen ? existing : await ConnectionManager.connect();
     this.attach(socket);
+    await this.ensureAuthorized(socket);
     return socket;
+  }
+
+  /**
+   * Proposals and orders are only accepted on an authorized socket. The socket
+   * is shared with the MarketEngine, but a page can reach the trade ticket
+   * before that handshake lands (or after a reconnect), so we (re-)authorize
+   * with the active account's WebSocket token before every order path.
+   */
+  private async ensureAuthorized(socket: WebSocketManager) {
+    const token = selectActiveToken(useAuthStore.getState());
+    if (!token) throw new Error("No authorised Deriv account. Sign in with Deriv again.");
+    if (this.authorizedToken === token) return;
+    const res = await socket.request({ authorize: token });
+    const error = res["error"] as { message?: string } | undefined;
+    if (error) {
+      this.authorizedToken = null;
+      throw new Error(error.message ?? "Deriv rejected this account token.");
+    }
+    this.authorizedToken = token;
   }
 
   private attach(socket: WebSocketManager) {
