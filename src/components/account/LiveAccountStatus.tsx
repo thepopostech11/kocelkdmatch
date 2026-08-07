@@ -1,7 +1,15 @@
 import { useAccountInfo, useDiagnostics } from "@/hooks/useMarket";
 import { cn } from "@/lib/utils";
 
-function Row({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" | "bad" }) {
+function Row({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "bad" | undefined;
+}) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border/60 py-1.5 last:border-0">
       <span className="text-xs text-muted-foreground">{label}</span>
