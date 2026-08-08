@@ -33,11 +33,11 @@ const emptyStats: BotSessionStats = {
 
 type BotStore = {
   stake: number;
-  minimumConfidence: 80 | 90 | 95 | 98;
+  minimumConfidence: number;
   stats: BotSessionStats;
   activity: BotActivity[];
   setStake: (stake: number) => void;
-  setMinimumConfidence: (value: 80 | 90 | 95 | 98) => void;
+  setMinimumConfidence: (value: number) => void;
   setStats: (stats: BotSessionStats) => void;
   addActivity: (message: string) => void;
   resetSession: () => void;
@@ -47,7 +47,7 @@ export const useBotStore = create<BotStore>()(
   persist(
     (set) => ({
       stake: 1,
-      minimumConfidence: 90,
+      minimumConfidence: 30,
       stats: emptyStats,
       activity: [],
       setStake: (stake) => set({ stake }),

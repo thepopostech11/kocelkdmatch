@@ -3,7 +3,7 @@ import { Activity, Bot, CircleStop, Play, Radar, ShieldCheck } from "lucide-reac
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useBotEngine, useScannerOpportunities } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useDiagnostics, useSymbolCatalogue } from "@/hooks/useMarket";
@@ -77,16 +77,25 @@ function BotPage() {
           <label className="text-xs text-muted-foreground">Stake amount
             <Input className="mt-1" type="number" min="0.35" step="0.01" value={stake} disabled={running} onChange={(event) => setStake(Number(event.target.value))} />
           </label>
-          <label className="text-xs text-muted-foreground">Min confidence
-            <Select value={String(minimumConfidence)} disabled={running} onValueChange={(value) => {
-              const next = Number(value) as 80 | 90 | 95 | 98;
-              setMinimumConfidence(next);
-              engine.setMinimumConfidence(next);
-            }}>
-              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent>{[80, 90, 95, 98].map((value) => <SelectItem key={value} value={String(value)}>{value}%</SelectItem>)}</SelectContent>
-            </Select>
-          </label>
+          <div className="text-xs text-muted-foreground">
+            <div className="flex items-center justify-between">
+              <span>Min confidence</span>
+              <strong className="text-foreground">{minimumConfidence}%</strong>
+            </div>
+            <Slider
+              className="mt-2"
+              value={[minimumConfidence]}
+              min={30}
+              max={98}
+              step={1}
+              disabled={running}
+              onValueChange={(value) => {
+                const next = value[0] ?? 30;
+                setMinimumConfidence(next);
+                engine.setMinimumConfidence(next);
+              }}
+            />
+          </div>
           {running ? (
             <Button className="sm:col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
           ) : (
