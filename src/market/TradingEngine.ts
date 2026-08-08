@@ -97,6 +97,19 @@ class TradingEngineImpl {
 
   /* ------------------------------------------------------------- proposals */
 
+  /** Turns a Deriv error payload into an actionable, field-level message. */
+  private describeError(raw: unknown, fallback: string): Error {
+    const error = raw as
+      | { code?: string; message?: string; details?: Record<string, string> }
+      | undefined;
+    if (!error) return new Error(fallback);
+    const details = error.details ?? {};
+    const fields = Object.keys(details).filter((key) => key !== "field");
+    const detail = fields.map((key) => `${key}: ${details[key]}`).join(" · ");
+    const message = [error.message ?? fallback, detail].filter(Boolean).join(" — ");
+    return new Error(message);
+  }
+
   /** Live price quote for a MATCHES contract. Used for the payout preview. */
   async quote(params: {
     symbol: string;
@@ -104,20 +117,14 @@ class TradingEngineImpl {
     stake: number;
     ticks: number;
     currency: string;
+    availableSymbols?: SymbolMeta[];
+    balance?: number;
   }): Promise<ProposalQuote> {
+    const built = buildMatchTradeRequest(params);
     const socket = await this.socket();
-    const res = await socket.request({
-      proposal: 1,
-      amount: Number(params.stake.toFixed(2)),
-      basis: "stake",
-      contract_type: "DIGITMATCH",
-      currency: params.currency,
-      duration: params.ticks,
-      duration_unit: "t",
-      symbol: params.symbol,
-      barrier: String(params.digit),
-    });
+    const res = await socket.request({ proposal: 1, ...built.params });
 
+    if (res["error"]) throw this.describeError(res["error"], "Deriv rejected the proposal.");
     const p = res["proposal"] as Record<string, unknown> | undefined;
     if (!p) throw new Error("No proposal returned");
     return {
@@ -132,8 +139,9 @@ class TradingEngineImpl {
   /* ----------------------------------------------------------------- buying */
 
   /**
-   * Submits a real MATCHES order through the authenticated Deriv API and
-   * immediately subscribes to live updates for the resulting contract.
+   * Submits a real MATCHES order. The contract is always priced through a
+   * proposal first, then bought by proposal id, so Deriv validates the exact
+   * parameters shown in the UI before any money moves.
    */
   async buy(params: {
     symbol: string;
@@ -141,25 +149,28 @@ class TradingEngineImpl {
     stake: number;
     ticks: number;
     currency: string;
+    availableSymbols?: SymbolMeta[];
+    balance?: number;
   }): Promise<OpenTrade> {
+    const built = buildMatchTradeRequest(params);
     const socket = await this.socket();
     this.lastError = null;
 
+    // 1. Proposal validation — surfaces the precise malformed parameter.
+    const quote = await this.quote(params);
+    if (!quote.id) throw new Error("Deriv did not return a tradeable proposal.");
+
+    // 2. Purchase the validated proposal.
     const res = await socket.request({
-      buy: 1,
-      // Cap the price at the stake so we never pay more than the user approved.
-      price: Number(params.stake.toFixed(2)),
-      parameters: {
-        amount: Number(params.stake.toFixed(2)),
-        basis: "stake",
-        contract_type: "DIGITMATCH",
-        currency: params.currency,
-        duration: params.ticks,
-        duration_unit: "t",
-        symbol: params.symbol,
-        barrier: String(params.digit),
-      },
+      buy: quote.id,
+      price: Number(Math.max(quote.askPrice, built.params.amount).toFixed(2)),
     });
+
+    if (res["error"]) {
+      const error = this.describeError(res["error"], "Order was not accepted by Deriv");
+      this.lastError = error.message;
+      throw error;
+    }
 
     const b = res["buy"] as Record<string, unknown> | undefined;
     if (!b) throw new Error("Order was not accepted by Deriv");
@@ -168,23 +179,23 @@ class TradingEngineImpl {
     const trade: OpenTrade = {
       contractId,
       transactionId: String(b["transaction_id"] ?? ""),
-      symbol: params.symbol,
-      targetDigit: params.digit,
-      stake: params.stake,
-      ticks: params.ticks,
+      symbol: built.params.symbol,
+      targetDigit: Number(built.params.barrier),
+      stake: built.params.amount,
+      ticks: built.params.duration,
       entryTime: Date.now(),
       entrySpot: null,
-      buyPrice: Number(b["buy_price"] ?? params.stake),
-      payout: Number(b["payout"] ?? 0),
+      buyPrice: Number(b["buy_price"] ?? built.params.amount),
+      payout: Number(b["payout"] ?? quote.payout),
       currentTick: 0,
-      remainingTicks: params.ticks,
+      remainingTicks: built.params.duration,
       currentSpot: null,
-      contractValue: Number(b["buy_price"] ?? params.stake),
+      contractValue: Number(b["buy_price"] ?? built.params.amount),
       profit: 0,
       status: "open",
       sellPrice: null,
       closedAt: null,
-      currency: params.currency,
+      currency: built.params.currency,
     };
 
     this.open.set(contractId, trade);
