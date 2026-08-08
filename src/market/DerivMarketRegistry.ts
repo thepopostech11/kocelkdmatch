@@ -54,7 +54,7 @@ class DerivMarketRegistryImpl {
     try {
       const socket = await ConnectionManager.connectAuthenticated();
       this.setStatus("DISCOVERING");
-      const res = await socket.request({ active_symbols: "brief", product_type: "basic" });
+      const res = await socket.request({ active_symbols: "brief" });
       const error = res["error"] as { message?: string } | undefined;
       if (error) throw new Error(error.message ?? "Deriv rejected the market discovery request.");
 

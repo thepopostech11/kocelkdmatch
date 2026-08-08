@@ -192,7 +192,7 @@ class MarketEngineImpl {
       this.unsubscribe = socket.subscribe((data) => this.handle(data));
 
       // 1. Active symbols handshake — authoritative pip sizes and availability.
-      socket.send({ active_symbols: "brief", product_type: "basic" });
+      socket.send({ active_symbols: "brief" });
       // 2. OAuth2 sockets arrive authenticated through their short-lived OTP
       // URL. Legacy API-token sessions still authorize with a WS message.
       if (ConnectionManager.mode === "oauth2-otp") {
