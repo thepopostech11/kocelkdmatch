@@ -21,6 +21,17 @@ import { cn } from "@/lib/utils";
 
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
+type TradePhase = "idle" | "validating" | "pricing" | "buying" | "confirmed" | "rejected";
+type ProposalDiagnostics = {
+  stage: "idle" | "sending" | "valid" | "rejected";
+  askPrice: number | null;
+  payout: number | null;
+  proposalId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  errorParameter: string | null;
+};
+
 /**
  * Manual MATCHES order entry. The target digit is seeded from the shared AI
  * recommendation but stays fully under the user's control.
@@ -39,10 +50,19 @@ export function TradeTicket() {
   const [touchedDigit, setTouchedDigit] = useState(false);
   const [payout, setPayout] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
-  const [phase, setPhase] = useState<"idle" | "validating" | "processing" | "confirmed" | "rejected">("idle");
+  const [phase, setPhase] = useState<TradePhase>("idle");
+  const [proposalDiagnostics, setProposalDiagnostics] = useState<ProposalDiagnostics>({
+    stage: "idle",
+    askPrice: null,
+    payout: null,
+    proposalId: null,
+    errorCode: null,
+    errorMessage: null,
+    errorParameter: null,
+  });
   const [rejection, setRejection] = useState<{ parameter: string; value: string; reason: string } | null>(null);
   const [lastContract, setLastContract] = useState<string | null>(null);
-  const submitting = phase === "validating" || phase === "processing";
+  const submitting = phase === "validating" || phase === "pricing" || phase === "buying";
 
   // Seed from the AI recommendation until the user overrides it.
   useEffect(() => {
@@ -61,6 +81,15 @@ export function TradeTicket() {
       return;
     }
     setQuoting(true);
+    setProposalDiagnostics({
+      stage: "sending",
+      askPrice: null,
+      payout: null,
+      proposalId: null,
+      errorCode: null,
+      errorMessage: null,
+      errorParameter: null,
+    });
     const timer = setTimeout(() => {
       void TradingEngine.quote({
         symbol,
@@ -71,10 +100,33 @@ export function TradeTicket() {
         availableSymbols: symbolCatalogue,
       })
         .then((q) => {
-          if (!cancelled) setPayout(q.payout);
+          if (!cancelled) {
+            setPayout(q.payout);
+            setProposalDiagnostics({
+              stage: "valid",
+              askPrice: q.askPrice,
+              payout: q.payout,
+              proposalId: q.id,
+              errorCode: null,
+              errorMessage: null,
+              errorParameter: null,
+            });
+          }
         })
-        .catch(() => {
-          if (!cancelled) setPayout(null);
+        .catch((error) => {
+          if (!cancelled) {
+            setPayout(null);
+            const detail = TradingEngine.lastErrorDetails;
+            setProposalDiagnostics({
+              stage: "rejected",
+              askPrice: null,
+              payout: null,
+              proposalId: null,
+              errorCode: detail?.code ?? null,
+              errorMessage: detail?.message ?? (error instanceof Error ? error.message : "Deriv rejected the proposal."),
+              errorParameter: detail?.parameter ?? null,
+            });
+          }
         })
         .finally(() => {
           if (!cancelled) setQuoting(false);
@@ -142,9 +194,10 @@ export function TradeTicket() {
       return;
     }
 
-    setPhase("processing");
+    setPhase("pricing");
     try {
-      const trade = await TradingEngine.buy({
+      setProposalDiagnostics((prev) => ({ ...prev, stage: "sending" }));
+      const proposal = await TradingEngine.quote({
         symbol,
         digit,
         stake,
@@ -153,6 +206,35 @@ export function TradeTicket() {
         availableSymbols: symbolCatalogue,
         balance: account.availableBalance || account.balance,
       });
+      setPayout(proposal.payout);
+      setProposalDiagnostics({
+        stage: "valid",
+        askPrice: proposal.askPrice,
+        payout: proposal.payout,
+        proposalId: proposal.id,
+        errorCode: null,
+        errorMessage: null,
+        errorParameter: null,
+      });
+      setPhase("buying");
+      const trade = await TradingEngine.buyFromProposal(
+        {
+          symbol,
+          digit,
+          stake,
+          ticks,
+          currency,
+          availableSymbols: symbolCatalogue,
+          balance: account.availableBalance || account.balance,
+        },
+        proposal,
+      );
+      setPayout(trade.payout);
+      setProposalDiagnostics((prev) => ({
+        ...prev,
+        payout: trade.payout,
+        proposalId: proposal.id,
+      }));
       setLastContract(trade.contractId);
       setPhase("confirmed");
       toast.success("MATCH trade confirmed", {
@@ -161,6 +243,16 @@ export function TradeTicket() {
     } catch (error) {
       setPhase("rejected");
       const reason = error instanceof Error ? error.message : "Deriv did not accept the order.";
+      const detail = TradingEngine.lastErrorDetails;
+      setProposalDiagnostics({
+        stage: "rejected",
+        askPrice: null,
+        payout: null,
+        proposalId: null,
+        errorCode: detail?.code ?? null,
+        errorMessage: detail?.message ?? reason,
+        errorParameter: detail?.parameter ?? null,
+      });
       setRejection(
         error instanceof TradeValidationError
           ? { parameter: error.parameter, value: String(error.value), reason: error.reason }
@@ -306,15 +398,17 @@ export function TradeTicket() {
           <span>
             {phase === "validating"
               ? "VALIDATING…"
-              : phase === "processing"
-                ? "PROCESSING…"
-                : `BUY MATCH · Digit ${digit}`}
+              : phase === "pricing"
+                ? "GETTING PRICE…"
+                : phase === "buying"
+                  ? "BUYING MATCH…"
+                  : `BUY MATCH · Digit ${digit}`}
           </span>
           <span className="text-[11px] font-medium opacity-90">
             {quoting
               ? "Pricing…"
               : payout != null
-                ? `Estimated payout ${money(payout)}`
+                ? `PAYOUT ${money(payout)}`
                 : "Payout unavailable"}
           </span>
         </span>
@@ -357,25 +451,59 @@ export function TradeTicket() {
           <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
             Match request debug
           </summary>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
-            <span className="text-muted-foreground">Symbol</span>
-            <span className="text-right">{symbol}</span>
-            <span className="text-muted-foreground">Contract type</span>
-            <span className="text-right">DIGITMATCH</span>
-            <span className="text-muted-foreground">Digit (barrier)</span>
-            <span className="text-right">{digit}</span>
-            <span className="text-muted-foreground">Stake</span>
-            <span className="text-right">{stake}</span>
-            <span className="text-muted-foreground">Duration</span>
-            <span className="text-right">{ticks}</span>
-            <span className="text-muted-foreground">Duration unit</span>
-            <span className="text-right">t</span>
-            <span className="text-muted-foreground">Currency</span>
-            <span className="text-right">{currency}</span>
-            <span className="text-muted-foreground">Proposal</span>
-            <span className="text-right">{quoting ? "pricing" : payout != null ? "valid" : "unavailable"}</span>
-            <span className="text-muted-foreground">Validation</span>
-            <span className="text-right">{phase}</span>
+          <div className="mt-2 space-y-2">
+            <div className="rounded-lg border border-border/70 bg-background/50 p-2">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                Match request
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+                <span className="text-muted-foreground">Contract type</span>
+                <span className="text-right">DIGITMATCH</span>
+                <span className="text-muted-foreground">Underlying symbol</span>
+                <span className="text-right">{symbol}</span>
+                <span className="text-muted-foreground">Barrier</span>
+                <span className="text-right">{digit}</span>
+                <span className="text-muted-foreground">Stake</span>
+                <span className="text-right">{stake}</span>
+                <span className="text-muted-foreground">Duration</span>
+                <span className="text-right">{ticks}</span>
+                <span className="text-muted-foreground">Duration unit</span>
+                <span className="text-right">t</span>
+                <span className="text-muted-foreground">Currency</span>
+                <span className="text-right">{currency}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-border/70 bg-background/50 p-2">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                Proposal status
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+                <span className="text-muted-foreground">Status</span>
+                <span className="text-right">
+                  {proposalDiagnostics.stage === "sending"
+                    ? "Request → Sending"
+                    : proposalDiagnostics.stage === "valid"
+                      ? "Proposal → Valid"
+                      : proposalDiagnostics.stage === "rejected"
+                        ? "Proposal → Rejected"
+                        : "Idle"}
+                </span>
+                <span className="text-muted-foreground">Ask price</span>
+                <span className="text-right">
+                  {proposalDiagnostics.askPrice != null ? money(proposalDiagnostics.askPrice) : "—"}
+                </span>
+                <span className="text-muted-foreground">Payout</span>
+                <span className="text-right">
+                  {proposalDiagnostics.payout != null ? money(proposalDiagnostics.payout) : "—"}
+                </span>
+                <span className="text-muted-foreground">Proposal ID</span>
+                <span className="text-right">{proposalDiagnostics.proposalId ?? "—"}</span>
+                <span className="text-muted-foreground">Error</span>
+                <span className="text-right">{proposalDiagnostics.errorCode ?? "—"}</span>
+                <span className="text-muted-foreground">Message</span>
+                <span className="text-right">{proposalDiagnostics.errorMessage ?? "—"}</span>
+              </div>
+            </div>
           </div>
         </details>
       )}

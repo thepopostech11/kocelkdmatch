@@ -20,6 +20,13 @@ export type ProposalQuote = {
   id: string;
 };
 
+export type TradingErrorDetails = {
+  code: string | null;
+  message: string | null;
+  parameter: string | null;
+  echoReq: Record<string, unknown> | null;
+};
+
 export type OpenTrade = {
   contractId: string;
   transactionId: string;
@@ -58,6 +65,7 @@ class TradingEngineImpl {
   open = new Map<string, OpenTrade>();
   version = 0;
   lastError: string | null = null;
+  lastErrorDetails: TradingErrorDetails | null = null;
 
   private authorizedToken: string | null = null;
 
@@ -102,13 +110,31 @@ class TradingEngineImpl {
   /** Turns a Deriv error payload into an actionable, field-level message. */
   private describeError(raw: unknown, fallback: string): Error {
     const error = raw as
-      | { code?: string; message?: string; details?: Record<string, string> }
+      | {
+          code?: string;
+          message?: string;
+          details?: Record<string, string>;
+          parameter?: string;
+          echo_req?: Record<string, unknown>;
+        }
       | undefined;
-    if (!error) return new Error(fallback);
+    if (!error) {
+      this.lastErrorDetails = null;
+      return new Error(fallback);
+    }
+
     const details = error.details ?? {};
     const fields = Object.keys(details).filter((key) => key !== "field");
     const detail = fields.map((key) => `${key}: ${details[key]}`).join(" · ");
-    const message = [error.message ?? fallback, detail].filter(Boolean).join(" — ");
+    const normalized: TradingErrorDetails = {
+      code: error.code ?? null,
+      message: error.message ?? fallback,
+      parameter: error.parameter ?? null,
+      echoReq: error.echo_req ?? null,
+    };
+    this.lastErrorDetails = normalized;
+
+    const message = [normalized.message, detail].filter(Boolean).join(" — ");
     return new Error(message);
   }
 
@@ -122,6 +148,8 @@ class TradingEngineImpl {
     availableSymbols?: SymbolMeta[];
     balance?: number;
   }): Promise<ProposalQuote> {
+    this.lastError = null;
+    this.lastErrorDetails = null;
     const built = buildMatchTradeRequest(params);
     const socket = await this.socket();
     const res = await socket.request({ proposal: 1, ...built.params });
@@ -154,12 +182,27 @@ class TradingEngineImpl {
     availableSymbols?: SymbolMeta[];
     balance?: number;
   }): Promise<OpenTrade> {
+    const quote = await this.quote(params);
+    return this.buyFromProposal(params, quote);
+  }
+
+  async buyFromProposal(
+    params: {
+      symbol: string;
+      digit: number;
+      stake: number;
+      ticks: number;
+      currency: string;
+      availableSymbols?: SymbolMeta[];
+      balance?: number;
+    },
+    quote: ProposalQuote,
+  ): Promise<OpenTrade> {
     const built = buildMatchTradeRequest(params);
     const socket = await this.socket();
     this.lastError = null;
+    this.lastErrorDetails = null;
 
-    // 1. Proposal validation — surfaces the precise malformed parameter.
-    const quote = await this.quote(params);
     if (!quote.id) throw new Error("Deriv did not return a tradeable proposal.");
 
     // 2. Purchase the validated proposal.
@@ -181,7 +224,7 @@ class TradingEngineImpl {
     const trade: OpenTrade = {
       contractId,
       transactionId: String(b["transaction_id"] ?? ""),
-      symbol: built.params.symbol,
+      symbol: built.params.underlying_symbol,
       targetDigit: Number(built.params.barrier),
       stake: built.params.amount,
       ticks: built.params.duration,

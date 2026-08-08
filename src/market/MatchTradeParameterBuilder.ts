@@ -39,7 +39,7 @@ export type MatchContractParameters = {
   currency: string;
   duration: number;
   duration_unit: "t";
-  symbol: string;
+  underlying_symbol: string;
   barrier: string;
 };
 
@@ -125,7 +125,7 @@ export function buildMatchTradeRequest(input: MatchTradeInput): MatchTradeReques
     currency,
     duration,
     duration_unit: "t",
-    symbol,
+    underlying_symbol: symbol,
     barrier: String(digitValue),
   };
 
