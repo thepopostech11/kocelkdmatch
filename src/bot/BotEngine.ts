@@ -35,6 +35,12 @@ class BotEngineImpl {
     this.tradeUnsubscribe = TradingEngine.onEvent((event) => this.handleTradeEvent(event));
   }
 
+  private get analysisReady() {
+    const symbolsLoaded = MarketEngine.symbols.length > 0;
+    const feedLive = MarketEngine.diagnostics.feed === "streaming" || MarketEngine.diagnostics.feed === "poll";
+    return symbolsLoaded && feedLive;
+  }
+
   async start(stake: number, minimumConfidence: number) {
     if (this.running) return;
     if (!Number.isFinite(stake) || stake <= 0) throw new Error("Enter a valid stake amount.");
@@ -46,22 +52,20 @@ class BotEngineImpl {
     }
     this.assertRiskLimits(stake);
     const symbols = MarketEngine.symbols;
-    if (!symbols.length) {
-      throw new Error("Analysis Engine has not loaded any Continuous Indices yet.");
-    }
     const feedLive =
       MarketEngine.diagnostics.feed === "streaming" || MarketEngine.diagnostics.feed === "poll";
-    if (!feedLive) {
-      throw new Error("Analysis Engine tick stream is not live yet.");
-    }
 
     this.running = true;
-    this.status = "scanning";
+    this.status = this.analysisReady ? "scanning" : "warming";
     this.error = null;
     this.locked = null;
     this.lastObservedEpoch = 0;
     useBotStore.getState().resetSession();
-    useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
+    useBotStore.getState().addActivity(
+      this.analysisReady
+        ? `Scanning ${symbols.length} analysis markets`
+        : "Waiting for existing Analysis Engine to become ready...",
+    );
     this.scannerUnsubscribe?.();
     this.scannerUnsubscribe = this.scanner.subscribe(() => this.evaluate());
     await this.scanner.start(symbols, minimumConfidence);
@@ -86,6 +90,12 @@ class BotEngineImpl {
 
   private evaluate() {
     if (!this.running || this.submitting || this.status === "trade-open") return;
+    if (!this.analysisReady) {
+      this.status = "warming";
+      this.emit();
+      return;
+    }
+
     const opportunities = this.scanner.opportunities;
     this.updateScanStats(opportunities);
 
