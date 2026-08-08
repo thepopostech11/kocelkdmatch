@@ -9,6 +9,8 @@
 import { ConnectionManager } from "@/websocket/ConnectionManager";
 import type { WebSocketManager } from "@/websocket/WebSocketManager";
 import { selectActiveToken, useAuthStore } from "@/stores/authStore";
+import { buildMatchTradeRequest } from "@/market/MatchTradeParameterBuilder";
+import type { SymbolMeta } from "@/market/MarketEngine";
 
 export type ProposalQuote = {
   payout: number;
