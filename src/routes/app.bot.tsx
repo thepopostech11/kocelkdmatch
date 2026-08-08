@@ -6,9 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useBotEngine, useScannerOpportunities } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
-import { useAccountInfo, useDiagnostics } from "@/hooks/useMarket";
-import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
-import { useSyncExternalStore } from "react";
+import { useAccountInfo, useDiagnostics, useSymbolCatalogue } from "@/hooks/useMarket";
 
 export const Route = createFileRoute("/app/bot")({
   head: () => ({
@@ -36,13 +34,8 @@ function BotPage() {
   const setStake = useBotStore((state) => state.setStake);
   const setMinimumConfidence = useBotStore((state) => state.setMinimumConfidence);
   const [actionError, setActionError] = useState<string | null>(null);
-  useSyncExternalStore(
-    (listener) => DerivMarketRegistry.subscribe(listener),
-    () => DerivMarketRegistry.version,
-    () => 0,
-  );
-  const registryStatus = DerivMarketRegistry.status;
-  const marketCount = DerivMarketRegistry.available.length;
+  const symbolCatalogue = useSymbolCatalogue();
+  const marketCount = symbolCatalogue.length;
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;
@@ -77,7 +70,7 @@ function BotPage() {
             <span>Feed: <strong className="text-foreground">{diagnostics.feed}</strong></span>
             <span>Authorization: <strong className="text-foreground">{account.authorised ? "verified" : "unavailable"}</strong></span>
             <span>Trading permission: <strong className="text-foreground">{diagnostics.tradingPermission ? "enabled" : "not granted"}</strong></span>
-            <span>Live markets: <strong className="text-foreground">{registryStatus === "READY" ? `${marketCount} available` : registryStatus === "DISCOVERING" || registryStatus === "CONNECTING" ? "initializing live markets…" : registryStatus.toLowerCase()}</strong></span>
+            <span>Analysis markets: <strong className="text-foreground">{marketCount} symbol{marketCount === 1 ? "" : "s"}</strong></span>
           </div>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">

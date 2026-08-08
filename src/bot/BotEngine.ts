@@ -1,5 +1,4 @@
 import { MarketEngine } from "@/market/MarketEngine";
-import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
 import { useBotStore } from "@/stores/botStore";
 import { useTradeStore } from "@/stores/tradeStore";
@@ -8,6 +7,7 @@ import { MultiSymbolScanner, type MarketOpportunity } from "./MultiSymbolScanner
 export type BotStatus =
   | "stopped"
   | "scanning"
+  | "warming"
   | "locked"
   | "waiting"
   | "submitting"
@@ -45,17 +45,14 @@ class BotEngineImpl {
       throw new Error("The selected account does not have enough available balance.");
     }
     this.assertRiskLimits(stake);
-    // Availability always comes from Deriv, never from a static list.
-    let symbols = DerivMarketRegistry.available;
+    const symbols = MarketEngine.symbols;
     if (!symbols.length) {
-      useBotStore.getState().addActivity("Discovering live Continuous Indices from Deriv…");
-      symbols = await DerivMarketRegistry.discover(true);
+      throw new Error("Analysis Engine has not loaded any Continuous Indices yet.");
     }
-    if (!symbols.length) {
-      throw new Error(
-        DerivMarketRegistry.error ??
-          "Deriv reported zero open Continuous Indices for this account right now.",
-      );
+    const feedLive =
+      MarketEngine.diagnostics.feed === "streaming" || MarketEngine.diagnostics.feed === "poll";
+    if (!feedLive) {
+      throw new Error("Analysis Engine tick stream is not live yet.");
     }
 
     this.running = true;
@@ -64,7 +61,7 @@ class BotEngineImpl {
     this.locked = null;
     this.lastObservedEpoch = 0;
     useBotStore.getState().resetSession();
-    useBotStore.getState().addActivity(`Scanning ${symbols.length} live markets`);
+    useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
     this.scannerUnsubscribe?.();
     this.scannerUnsubscribe = this.scanner.subscribe(() => this.evaluate());
     await this.scanner.start(symbols, minimumConfidence);
@@ -171,7 +168,7 @@ class BotEngineImpl {
         stake,
         ticks: prediction.suggestedDuration,
         currency: account.currency,
-        availableSymbols: DerivMarketRegistry.available,
+        availableSymbols: MarketEngine.symbols,
         balance: account.availableBalance,
       });
       this.lastTrade = trade;
