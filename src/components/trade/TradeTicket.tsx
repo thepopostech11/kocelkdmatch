@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useAccountInfo, useAnalysisSnapshot, usePredictionState } from "@/hooks/useMarket";
+  useAccountInfo,
+  useAnalysisSnapshot,
+  usePredictionState,
+  useSymbolCatalogue,
+} from "@/hooks/useMarket";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useTradeStore } from "@/stores/tradeStore";
 import { TradingEngine } from "@/market/TradingEngine";
+import {
+  TradeValidationError,
+  buildMatchTradeRequest,
+} from "@/market/MatchTradeParameterBuilder";
 import { DURATION_RANGE } from "@/config/app";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ export function TradeTicket() {
   const snapshot = useAnalysisSnapshot();
   const { prediction } = usePredictionState();
   const symbol = useConnectionStore((s) => s.symbol);
+  const symbolCatalogue = useSymbolCatalogue();
   const risk = useTradeStore((s) => s.risk);
 
   const [stake, setStake] = useState(risk.defaultStake);
@@ -37,8 +39,10 @@ export function TradeTicket() {
   const [touchedDigit, setTouchedDigit] = useState(false);
   const [payout, setPayout] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "validating" | "processing" | "confirmed" | "rejected">("idle");
+  const [rejection, setRejection] = useState<{ parameter: string; value: string; reason: string } | null>(null);
+  const [lastContract, setLastContract] = useState<string | null>(null);
+  const submitting = phase === "validating" || phase === "processing";
 
   // Seed from the AI recommendation until the user overrides it.
   useEffect(() => {
@@ -46,6 +50,8 @@ export function TradeTicket() {
   }, [prediction, touchedDigit]);
 
   const currency = account.currency || "USD";
+  const symbolName =
+    symbolCatalogue.find((item) => item.symbol === symbol)?.displayName ?? symbol;
 
   // Live payout preview from the Deriv proposal endpoint.
   useEffect(() => {
@@ -56,7 +62,14 @@ export function TradeTicket() {
     }
     setQuoting(true);
     const timer = setTimeout(() => {
-      void TradingEngine.quote({ symbol, digit, stake, ticks, currency })
+      void TradingEngine.quote({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+      })
         .then((q) => {
           if (!cancelled) setPayout(q.payout);
         })
@@ -71,7 +84,7 @@ export function TradeTicket() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [symbol, digit, stake, ticks, currency, account.authorised]);
+  }, [symbol, digit, stake, ticks, currency, account.authorised, symbolCatalogue]);
 
   const profit = payout != null ? payout - stake : null;
   const returnPct = payout != null && stake > 0 ? ((payout - stake) / stake) * 100 : null;
@@ -83,58 +96,79 @@ export function TradeTicket() {
   const money = (v: number) =>
     `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      const trade = await TradingEngine.buy({ symbol, digit, stake, ticks, currency });
-      toast.success("Trade submitted", {
-        description: `MATCHES ${digit} · ${money(stake)} · ${ticks} tick${ticks > 1 ? "s" : ""}`,
-      });
-      setConfirmOpen(false);
-      return trade;
-    } catch (error) {
-      toast.error("Trade rejected", {
-        description: error instanceof Error ? error.message : "Deriv did not accept the order.",
-      });
-      return null;
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const onMatch = async () => {
+    if (submitting) return;
+    setRejection(null);
+    setLastContract(null);
 
-  const onMatch = () => {
     if (!account.authorised) {
-      toast.error("Not authorised", { description: "Sign in with Deriv before trading." });
+      setPhase("rejected");
+      setRejection({ parameter: "session", value: "unauthorised", reason: "Sign in with Deriv before trading." });
       return;
     }
     if (!account.scopes.includes("trade")) {
-      toast.error("Trading permission missing", {
-        description: "This Deriv token does not include the trade scope.",
+      setPhase("rejected");
+      setRejection({
+        parameter: "permission",
+        value: "read only",
+        reason: "This Deriv session does not include the trade scope.",
       });
       return;
     }
-    if (stake <= 0) {
-      toast.error("Enter a stake greater than zero.");
-      return;
-    }
-    if (insufficient) {
-      toast.error("Insufficient balance", { description: `Available: ${money(account.balance)}` });
-      return;
-    }
-    if (risk.confirmBeforeTrade) setConfirmOpen(true);
-    else void submit();
-  };
 
-  const summaryRows = useMemo(
-    () => [
-      ["Target digit", String(digit)],
-      ["Stake", money(stake)],
-      ["Ticks", String(ticks)],
-      ["Estimated payout", payout != null ? money(payout) : "—"],
-      ["Estimated profit", profit != null ? money(profit) : "—"],
-    ],
-    [digit, stake, ticks, payout, profit, currency],
-  );
+    setPhase("validating");
+    let request;
+    try {
+      request = buildMatchTradeRequest({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+        balance: account.availableBalance || account.balance,
+      });
+    } catch (error) {
+      setPhase("rejected");
+      if (error instanceof TradeValidationError) {
+        setRejection({ parameter: error.parameter, value: String(error.value), reason: error.reason });
+      } else {
+        setRejection({
+          parameter: "request",
+          value: "—",
+          reason: error instanceof Error ? error.message : "Trade could not be validated.",
+        });
+      }
+      return;
+    }
+
+    setPhase("processing");
+    try {
+      const trade = await TradingEngine.buy({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+        balance: account.availableBalance || account.balance,
+      });
+      setLastContract(trade.contractId);
+      setPhase("confirmed");
+      toast.success("MATCH trade confirmed", {
+        description: `${request.debug.displayName} · digit ${digit} · ${money(stake)} · ${ticks} tick${ticks > 1 ? "s" : ""} · #${trade.contractId}`,
+      });
+    } catch (error) {
+      setPhase("rejected");
+      const reason = error instanceof Error ? error.message : "Deriv did not accept the order.";
+      setRejection(
+        error instanceof TradeValidationError
+          ? { parameter: error.parameter, value: String(error.value), reason: error.reason }
+          : { parameter: "deriv", value: "proposal/buy", reason },
+      );
+      toast.error("MATCH trade rejected", { description: reason });
+    }
+  };
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
@@ -259,7 +293,7 @@ export function TradeTicket() {
 
       <Button
         size="lg"
-        onClick={onMatch}
+        onClick={() => void onMatch()}
         disabled={submitting || !account.authorised}
         className="mt-4 h-14 w-full bg-gradient-brand text-base font-bold"
       >
@@ -269,7 +303,13 @@ export function TradeTicket() {
           <TrendingUp className="mr-2 size-5" />
         )}
         <span className="flex flex-col items-start leading-tight">
-          <span>MATCH · Digit {digit}</span>
+          <span>
+            {phase === "validating"
+              ? "VALIDATING…"
+              : phase === "processing"
+                ? "PROCESSING…"
+                : `BUY MATCH · Digit ${digit}`}
+          </span>
           <span className="text-[11px] font-medium opacity-90">
             {quoting
               ? "Pricing…"
@@ -280,42 +320,65 @@ export function TradeTicket() {
         </span>
       </Button>
 
-      {/* Confirmation */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm MATCHES trade</DialogTitle>
-            <DialogDescription>
-              This places a real contract on your {account.isVirtual ? "demo" : "real"} account{" "}
-              {account.loginid}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            {summaryRows.map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between border-b border-border py-2 last:border-b-0"
-              >
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <span className="font-mono text-sm font-bold">{value}</span>
-              </div>
-            ))}
+      {phase === "confirmed" && lastContract && (
+        <div className="mt-3 rounded-xl border border-success/40 bg-success/10 p-3 text-[11px]">
+          <p className="text-xs font-bold text-success">MATCH TRADE CONFIRMED</p>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+            <span className="text-muted-foreground">Symbol</span>
+            <span className="text-right">{symbolName}</span>
+            <span className="text-muted-foreground">Digit</span>
+            <span className="text-right">{digit}</span>
+            <span className="text-muted-foreground">Duration</span>
+            <span className="text-right">{ticks} ticks</span>
+            <span className="text-muted-foreground">Stake</span>
+            <span className="text-right">{money(stake)}</span>
+            <span className="text-muted-foreground">Contract ID</span>
+            <span className="text-right">{lastContract}</span>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void submit()}
-              disabled={submitting}
-              className="bg-gradient-brand"
-            >
-              {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Confirm & buy
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
+
+      {phase === "rejected" && rejection && (
+        <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-[11px]">
+          <p className="text-xs font-bold text-destructive">MATCH TRADE REJECTED</p>
+          <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <span className="text-muted-foreground">Parameter</span>
+            <span className="font-mono">{rejection.parameter}</span>
+            <span className="text-muted-foreground">Value</span>
+            <span className="font-mono">{rejection.value}</span>
+            <span className="text-muted-foreground">Reason</span>
+            <span>{rejection.reason}</span>
+          </div>
+        </div>
+      )}
+
+      {import.meta.env.DEV && (
+        <details className="mt-3 rounded-xl border border-border bg-surface-2/50 p-3 text-[11px]">
+          <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            Match request debug
+          </summary>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+            <span className="text-muted-foreground">Symbol</span>
+            <span className="text-right">{symbol}</span>
+            <span className="text-muted-foreground">Contract type</span>
+            <span className="text-right">DIGITMATCH</span>
+            <span className="text-muted-foreground">Digit (barrier)</span>
+            <span className="text-right">{digit}</span>
+            <span className="text-muted-foreground">Stake</span>
+            <span className="text-right">{stake}</span>
+            <span className="text-muted-foreground">Duration</span>
+            <span className="text-right">{ticks}</span>
+            <span className="text-muted-foreground">Duration unit</span>
+            <span className="text-right">t</span>
+            <span className="text-muted-foreground">Currency</span>
+            <span className="text-right">{currency}</span>
+            <span className="text-muted-foreground">Proposal</span>
+            <span className="text-right">{quoting ? "pricing" : payout != null ? "valid" : "unavailable"}</span>
+            <span className="text-muted-foreground">Validation</span>
+            <span className="text-right">{phase}</span>
+          </div>
+        </details>
+      )}
     </section>
   );
 }

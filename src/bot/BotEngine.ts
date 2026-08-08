@@ -1,4 +1,5 @@
 import { MarketEngine } from "@/market/MarketEngine";
+import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
 import { useBotStore } from "@/stores/botStore";
 import { useTradeStore } from "@/stores/tradeStore";
@@ -44,8 +45,18 @@ class BotEngineImpl {
       throw new Error("The selected account does not have enough available balance.");
     }
     this.assertRiskLimits(stake);
-    const symbols = MarketEngine.symbols.filter((symbol) => symbol.open);
-    if (!symbols.length) throw new Error("Live Deriv markets are not available yet.");
+    // Availability always comes from Deriv, never from a static list.
+    let symbols = DerivMarketRegistry.available;
+    if (!symbols.length) {
+      useBotStore.getState().addActivity("Discovering live Continuous Indices from Deriv…");
+      symbols = await DerivMarketRegistry.discover(true);
+    }
+    if (!symbols.length) {
+      throw new Error(
+        DerivMarketRegistry.error ??
+          "Deriv reported zero open Continuous Indices for this account right now.",
+      );
+    }
 
     this.running = true;
     this.status = "scanning";
@@ -160,6 +171,8 @@ class BotEngineImpl {
         stake,
         ticks: prediction.suggestedDuration,
         currency: account.currency,
+        availableSymbols: DerivMarketRegistry.available,
+        balance: account.availableBalance,
       });
       this.lastTrade = trade;
       this.status = "trade-open";
