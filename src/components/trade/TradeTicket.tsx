@@ -1,20 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { useAccountInfo, useAnalysisSnapshot, usePredictionState } from "@/hooks/useMarket";
+  useAccountInfo,
+  useAnalysisSnapshot,
+  usePredictionState,
+  useSymbolCatalogue,
+} from "@/hooks/useMarket";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useTradeStore } from "@/stores/tradeStore";
 import { TradingEngine } from "@/market/TradingEngine";
+import {
+  TradeValidationError,
+  buildMatchTradeRequest,
+} from "@/market/MatchTradeParameterBuilder";
 import { DURATION_RANGE } from "@/config/app";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ export function TradeTicket() {
   const snapshot = useAnalysisSnapshot();
   const { prediction } = usePredictionState();
   const symbol = useConnectionStore((s) => s.symbol);
+  const symbolCatalogue = useSymbolCatalogue();
   const risk = useTradeStore((s) => s.risk);
 
   const [stake, setStake] = useState(risk.defaultStake);
@@ -37,8 +39,10 @@ export function TradeTicket() {
   const [touchedDigit, setTouchedDigit] = useState(false);
   const [payout, setPayout] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "validating" | "processing" | "confirmed" | "rejected">("idle");
+  const [rejection, setRejection] = useState<{ parameter: string; value: string; reason: string } | null>(null);
+  const [lastContract, setLastContract] = useState<string | null>(null);
+  const submitting = phase === "validating" || phase === "processing";
 
   // Seed from the AI recommendation until the user overrides it.
   useEffect(() => {
@@ -56,7 +60,14 @@ export function TradeTicket() {
     }
     setQuoting(true);
     const timer = setTimeout(() => {
-      void TradingEngine.quote({ symbol, digit, stake, ticks, currency })
+      void TradingEngine.quote({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+      })
         .then((q) => {
           if (!cancelled) setPayout(q.payout);
         })
@@ -71,7 +82,7 @@ export function TradeTicket() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [symbol, digit, stake, ticks, currency, account.authorised]);
+  }, [symbol, digit, stake, ticks, currency, account.authorised, symbolCatalogue]);
 
   const profit = payout != null ? payout - stake : null;
   const returnPct = payout != null && stake > 0 ? ((payout - stake) / stake) * 100 : null;
@@ -83,58 +94,79 @@ export function TradeTicket() {
   const money = (v: number) =>
     `${currency} ${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      const trade = await TradingEngine.buy({ symbol, digit, stake, ticks, currency });
-      toast.success("Trade submitted", {
-        description: `MATCHES ${digit} · ${money(stake)} · ${ticks} tick${ticks > 1 ? "s" : ""}`,
-      });
-      setConfirmOpen(false);
-      return trade;
-    } catch (error) {
-      toast.error("Trade rejected", {
-        description: error instanceof Error ? error.message : "Deriv did not accept the order.",
-      });
-      return null;
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const onMatch = async () => {
+    if (submitting) return;
+    setRejection(null);
+    setLastContract(null);
 
-  const onMatch = () => {
     if (!account.authorised) {
-      toast.error("Not authorised", { description: "Sign in with Deriv before trading." });
+      setPhase("rejected");
+      setRejection({ parameter: "session", value: "unauthorised", reason: "Sign in with Deriv before trading." });
       return;
     }
     if (!account.scopes.includes("trade")) {
-      toast.error("Trading permission missing", {
-        description: "This Deriv token does not include the trade scope.",
+      setPhase("rejected");
+      setRejection({
+        parameter: "permission",
+        value: "read only",
+        reason: "This Deriv session does not include the trade scope.",
       });
       return;
     }
-    if (stake <= 0) {
-      toast.error("Enter a stake greater than zero.");
-      return;
-    }
-    if (insufficient) {
-      toast.error("Insufficient balance", { description: `Available: ${money(account.balance)}` });
-      return;
-    }
-    if (risk.confirmBeforeTrade) setConfirmOpen(true);
-    else void submit();
-  };
 
-  const summaryRows = useMemo(
-    () => [
-      ["Target digit", String(digit)],
-      ["Stake", money(stake)],
-      ["Ticks", String(ticks)],
-      ["Estimated payout", payout != null ? money(payout) : "—"],
-      ["Estimated profit", profit != null ? money(profit) : "—"],
-    ],
-    [digit, stake, ticks, payout, profit, currency],
-  );
+    setPhase("validating");
+    let request;
+    try {
+      request = buildMatchTradeRequest({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+        balance: account.availableBalance || account.balance,
+      });
+    } catch (error) {
+      setPhase("rejected");
+      if (error instanceof TradeValidationError) {
+        setRejection({ parameter: error.parameter, value: String(error.value), reason: error.reason });
+      } else {
+        setRejection({
+          parameter: "request",
+          value: "—",
+          reason: error instanceof Error ? error.message : "Trade could not be validated.",
+        });
+      }
+      return;
+    }
+
+    setPhase("processing");
+    try {
+      const trade = await TradingEngine.buy({
+        symbol,
+        digit,
+        stake,
+        ticks,
+        currency,
+        availableSymbols: symbolCatalogue,
+        balance: account.availableBalance || account.balance,
+      });
+      setLastContract(trade.contractId);
+      setPhase("confirmed");
+      toast.success("MATCH trade confirmed", {
+        description: `${request.debug.displayName} · digit ${digit} · ${money(stake)} · ${ticks} tick${ticks > 1 ? "s" : ""} · #${trade.contractId}`,
+      });
+    } catch (error) {
+      setPhase("rejected");
+      const reason = error instanceof Error ? error.message : "Deriv did not accept the order.";
+      setRejection(
+        error instanceof TradeValidationError
+          ? { parameter: error.parameter, value: String(error.value), reason: error.reason }
+          : { parameter: "deriv", value: "proposal/buy", reason },
+      );
+      toast.error("MATCH trade rejected", { description: reason });
+    }
+  };
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-soft">
