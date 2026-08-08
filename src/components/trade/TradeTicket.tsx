@@ -50,6 +50,8 @@ export function TradeTicket() {
   }, [prediction, touchedDigit]);
 
   const currency = account.currency || "USD";
+  const symbolName =
+    symbolCatalogue.find((item) => item.symbol === symbol)?.displayName ?? symbol;
 
   // Live payout preview from the Deriv proposal endpoint.
   useEffect(() => {
