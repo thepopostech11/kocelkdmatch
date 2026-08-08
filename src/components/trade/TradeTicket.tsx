@@ -291,7 +291,7 @@ export function TradeTicket() {
 
       <Button
         size="lg"
-        onClick={onMatch}
+        onClick={() => void onMatch()}
         disabled={submitting || !account.authorised}
         className="mt-4 h-14 w-full bg-gradient-brand text-base font-bold"
       >
@@ -301,7 +301,13 @@ export function TradeTicket() {
           <TrendingUp className="mr-2 size-5" />
         )}
         <span className="flex flex-col items-start leading-tight">
-          <span>MATCH · Digit {digit}</span>
+          <span>
+            {phase === "validating"
+              ? "VALIDATING…"
+              : phase === "processing"
+                ? "PROCESSING…"
+                : `BUY MATCH · Digit ${digit}`}
+          </span>
           <span className="text-[11px] font-medium opacity-90">
             {quoting
               ? "Pricing…"
@@ -312,42 +318,65 @@ export function TradeTicket() {
         </span>
       </Button>
 
-      {/* Confirmation */}
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm MATCHES trade</DialogTitle>
-            <DialogDescription>
-              This places a real contract on your {account.isVirtual ? "demo" : "real"} account{" "}
-              {account.loginid}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            {summaryRows.map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between border-b border-border py-2 last:border-b-0"
-              >
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <span className="font-mono text-sm font-bold">{value}</span>
-              </div>
-            ))}
+      {phase === "confirmed" && lastContract && (
+        <div className="mt-3 rounded-xl border border-success/40 bg-success/10 p-3 text-[11px]">
+          <p className="text-xs font-bold text-success">MATCH TRADE CONFIRMED</p>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+            <span className="text-muted-foreground">Symbol</span>
+            <span className="text-right">{symbolName}</span>
+            <span className="text-muted-foreground">Digit</span>
+            <span className="text-right">{digit}</span>
+            <span className="text-muted-foreground">Duration</span>
+            <span className="text-right">{ticks} ticks</span>
+            <span className="text-muted-foreground">Stake</span>
+            <span className="text-right">{money(stake)}</span>
+            <span className="text-muted-foreground">Contract ID</span>
+            <span className="text-right">{lastContract}</span>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void submit()}
-              disabled={submitting}
-              className="bg-gradient-brand"
-            >
-              {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Confirm & buy
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
+
+      {phase === "rejected" && rejection && (
+        <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-[11px]">
+          <p className="text-xs font-bold text-destructive">MATCH TRADE REJECTED</p>
+          <div className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <span className="text-muted-foreground">Parameter</span>
+            <span className="font-mono">{rejection.parameter}</span>
+            <span className="text-muted-foreground">Value</span>
+            <span className="font-mono">{rejection.value}</span>
+            <span className="text-muted-foreground">Reason</span>
+            <span>{rejection.reason}</span>
+          </div>
+        </div>
+      )}
+
+      {import.meta.env.DEV && (
+        <details className="mt-3 rounded-xl border border-border bg-surface-2/50 p-3 text-[11px]">
+          <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            Match request debug
+          </summary>
+          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono tabular-nums">
+            <span className="text-muted-foreground">Symbol</span>
+            <span className="text-right">{symbol}</span>
+            <span className="text-muted-foreground">Contract type</span>
+            <span className="text-right">DIGITMATCH</span>
+            <span className="text-muted-foreground">Digit (barrier)</span>
+            <span className="text-right">{digit}</span>
+            <span className="text-muted-foreground">Stake</span>
+            <span className="text-right">{stake}</span>
+            <span className="text-muted-foreground">Duration</span>
+            <span className="text-right">{ticks}</span>
+            <span className="text-muted-foreground">Duration unit</span>
+            <span className="text-right">t</span>
+            <span className="text-muted-foreground">Currency</span>
+            <span className="text-right">{currency}</span>
+            <span className="text-muted-foreground">Proposal</span>
+            <span className="text-right">{quoting ? "pricing" : payout != null ? "valid" : "unavailable"}</span>
+            <span className="text-muted-foreground">Validation</span>
+            <span className="text-right">{phase}</span>
+          </div>
+        </details>
+      )}
     </section>
   );
 }
