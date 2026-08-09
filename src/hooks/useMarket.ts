@@ -100,6 +100,17 @@ export function useSymbolCatalogue() {
   return MarketEngine.symbols;
 }
 
+export function useAnalysisState() {
+  useEngineVersion();
+  return {
+    symbols: MarketEngine.symbols,
+    snapshot: MarketEngine.snapshot,
+    prediction: MarketEngine.prediction,
+    entry: MarketEngine.entry,
+    diagnostics: MarketEngine.diagnostics,
+  };
+}
+
 /** Last N digits for the live tape, newest last. */
 export function useDigitTape(count = 100) {
   useEngineVersion();

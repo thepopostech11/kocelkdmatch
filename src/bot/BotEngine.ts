@@ -30,6 +30,7 @@ class BotEngineImpl {
   private running = false;
   private submitting = false;
   private lastObservedEpoch = 0;
+  private lastKnownMarketCount = 0;
 
   constructor() {
     this.tradeUnsubscribe = TradingEngine.onEvent((event) => this.handleTradeEvent(event));
@@ -54,7 +55,13 @@ class BotEngineImpl {
     this.locked = null;
     this.lastObservedEpoch = 0;
     useBotStore.getState().resetSession();
-    useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
+    if (symbols.length > 0) {
+      useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
+    } else {
+      useBotStore.getState().addActivity(
+        "Connected to shared Analysis Engine — discovering available analysis markets...",
+      );
+    }
     this.scannerUnsubscribe?.();
     this.scannerUnsubscribe = this.scanner.subscribe(() => this.evaluate());
     await this.scanner.start(symbols, minimumConfidence);
@@ -80,6 +87,21 @@ class BotEngineImpl {
   private evaluate() {
     if (!this.running || this.submitting || this.status === "trade-open") return;
     const opportunities = this.scanner.opportunities;
+    const marketCount = opportunities.length;
+    const store = useBotStore.getState();
+    if (marketCount !== this.lastKnownMarketCount) {
+      this.lastKnownMarketCount = marketCount;
+      if (marketCount > 0) {
+        store.addActivity(`Analysis markets available: ${marketCount}`);
+      } else {
+        store.addActivity("Waiting for live analysis markets from the shared engine...");
+      }
+    }
+    if (marketCount === 0 && MarketEngine.snapshot.live.bufferSize > 0) {
+      console.error(
+        "BOT INTEGRATION ERROR: Analysis Engine contains live markets, but Bot received zero markets.",
+      );
+    }
     this.updateScanStats(opportunities);
 
     if (this.locked) {

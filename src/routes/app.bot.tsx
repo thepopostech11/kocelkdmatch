@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { useBotEngine, useScannerOpportunities } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
-import { useAccountInfo, useDiagnostics, useSymbolCatalogue } from "@/hooks/useMarket";
+import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
 
 export const Route = createFileRoute("/app/bot")({
   head: () => ({
@@ -27,6 +27,7 @@ function BotPage() {
   const opportunities = useScannerOpportunities();
   const account = useAccountInfo();
   const diagnostics = useDiagnostics();
+  const analysisState = useAnalysisState();
   const stake = useBotStore((state) => state.stake);
   const minimumConfidence = useBotStore((state) => state.minimumConfidence);
   const stats = useBotStore((state) => state.stats);
@@ -34,8 +35,9 @@ function BotPage() {
   const setStake = useBotStore((state) => state.setStake);
   const setMinimumConfidence = useBotStore((state) => state.setMinimumConfidence);
   const [actionError, setActionError] = useState<string | null>(null);
-  const symbolCatalogue = useSymbolCatalogue();
-  const marketCount = symbolCatalogue.length;
+  const marketCount = analysisState.symbols.length;
+  const readyMarkets = opportunities.length;
+  const qualifiedMarkets = opportunities.filter((item) => item.eligibility?.eligible).length;
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Zap } from "lucide-react";
+import { MarketEngine } from "@/market/MarketEngine";
 import { usePredictionState } from "@/hooks/useMarket";
 import { useTradeStore } from "@/stores/tradeStore";
 
@@ -38,6 +39,7 @@ export function EntryMonitor() {
   const risk = useTradeStore((s) => s.risk);
   const [visible, setVisible] = useState(false);
   const [shownFor, setShownFor] = useState<number | null>(null);
+  const [hideOnNextTick, setHideOnNextTick] = useState(false);
 
   const confirmedAt = entry.confirmedAt;
 
@@ -45,10 +47,18 @@ export function EntryMonitor() {
     if (!entry.confirmed || !confirmedAt || confirmedAt === shownFor) return;
     setShownFor(confirmedAt);
     setVisible(true);
+    setHideOnNextTick(true);
     if (risk.entrySoundEnabled) playChime();
-    const timer = setTimeout(() => setVisible(false), risk.entryBannerSeconds * 1000);
-    return () => clearTimeout(timer);
-  }, [entry.confirmed, confirmedAt, shownFor, risk.entrySoundEnabled, risk.entryBannerSeconds]);
+  }, [entry.confirmed, confirmedAt, shownFor, risk.entrySoundEnabled]);
+
+  useEffect(() => {
+    if (!hideOnNextTick) return;
+    const unsubscribe = MarketEngine.onTick(() => {
+      setVisible(false);
+      setHideOnNextTick(false);
+    });
+    return unsubscribe;
+  }, [hideOnNextTick]);
 
   return (
     <AnimatePresence>
