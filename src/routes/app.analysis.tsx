@@ -35,7 +35,7 @@ export const Route = createFileRoute("/app/analysis")({
   component: AnalysisPage,
 });
 
-export function AnalysisPage() {
+function AnalysisPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 p-3 sm:p-4">
       <header>
