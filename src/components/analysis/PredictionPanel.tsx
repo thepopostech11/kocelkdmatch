@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Brain, Target, Timer, Zap, CheckCircle2, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePredictionState, useAnalysisSnapshot } from "@/hooks/useMarket";
+import { MarketEngine } from "@/market/MarketEngine";
 import { useAnalysisStore } from "@/stores/analysisStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { cn } from "@/lib/utils";
@@ -25,11 +26,18 @@ export function PredictionPanel() {
   const notify = useNotificationStore((s) => s.push);
 
   const ready = snapshot.live.bufferSize >= 20;
+  const [showConfirmed, setShowConfirmed] = useState(false);
 
   useEffect(() => {
     if (!prediction) return;
     if (entry.confirmed) {
       markResolved(prediction.id, { confirmedAt: entry.confirmedAt });
+      // Show the confirmation panel, but auto-hide it on the next live tick.
+      setShowConfirmed(true);
+      const unsub = MarketEngine.onTick(() => {
+        setShowConfirmed(false);
+        unsub();
+      });
     } else if (entry.expired) {
       markResolved(prediction.id, { expired: true });
     }
@@ -124,7 +132,7 @@ export function PredictionPanel() {
 
           {/* Live entry monitor */}
           <AnimatePresence mode="wait">
-            {entry.confirmed ? (
+            {showConfirmed ? (
               <motion.div
                 key="confirmed"
                 initial={{ opacity: 0, y: 8 }}

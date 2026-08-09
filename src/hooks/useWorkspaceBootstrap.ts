@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketEngine } from "@/market/MarketEngine";
+import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useAuthStore } from "@/stores/authStore";
 import { selectActiveToken } from "@/stores/authStore";
@@ -54,6 +55,14 @@ export function useWorkspaceBootstrap() {
 
       await tick(70, "Opening live market feed");
       setMarketFeed("connecting");
+      // Warm the market registry so other consumers (e.g. the Bot scanner)
+      // can immediately query available Continuous Indices without racing
+      // the active_symbols discovery.
+      try {
+        void DerivMarketRegistry.discover();
+      } catch {
+        // Non-fatal.
+      }
       const unsubscribe = MarketEngine.onTick((t) => {
         if (t.quote) {
           setMarketFeed("connected");

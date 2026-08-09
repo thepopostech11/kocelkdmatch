@@ -48,6 +48,8 @@ export function TradeTicket() {
   const [ticks, setTicks] = useState(risk.defaultTicks);
   const [digit, setDigit] = useState<number>(prediction?.targetDigit ?? 0);
   const [touchedDigit, setTouchedDigit] = useState(false);
+  const [touchedTicks, setTouchedTicks] = useState(false);
+  const [lastPredictionId, setLastPredictionId] = useState<string | null>(null);
   const [payout, setPayout] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [phase, setPhase] = useState<TradePhase>("idle");
@@ -68,6 +70,20 @@ export function TradeTicket() {
   useEffect(() => {
     if (!touchedDigit && prediction) setDigit(prediction.targetDigit);
   }, [prediction, touchedDigit]);
+
+  // Seed ticks from the AI recommendation when a new prediction is produced
+  // (for example when the user clicks PREDICT). If the user manually edits
+  // ticks afterwards, their value should persist until the next explicit
+  // prediction event (a new prediction id).
+  useEffect(() => {
+    if (!prediction) return;
+    const id = prediction.id ?? String(prediction.targetDigit) + String(prediction.suggestedDuration);
+    if (id !== lastPredictionId) {
+      setTicks(prediction.suggestedDuration);
+      setTouchedTicks(false);
+      setLastPredictionId(id);
+    }
+  }, [prediction, lastPredictionId]);
 
   const currency = account.currency || "USD";
   const symbolName =
@@ -337,14 +353,14 @@ export function TradeTicket() {
             min={DURATION_RANGE.min}
             max={DURATION_RANGE.max}
             value={ticks}
-            onChange={(e) =>
-              setTicks(
-                Math.max(
-                  DURATION_RANGE.min,
-                  Math.min(DURATION_RANGE.max, Number(e.target.value) || 1),
-                ),
-              )
-            }
+            onChange={(e) => {
+              const next = Math.max(
+                DURATION_RANGE.min,
+                Math.min(DURATION_RANGE.max, Number(e.target.value) || 1),
+              );
+              setTicks(next);
+              setTouchedTicks(true);
+            }}
           />
         </div>
       </div>

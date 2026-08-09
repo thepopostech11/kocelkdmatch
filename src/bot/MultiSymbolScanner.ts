@@ -1,4 +1,6 @@
 import { MarketEngine, emptySnapshot, type SymbolMeta } from "@/market/MarketEngine";
+import AnalysisState from "@/stores/analysisState";
+import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
 import { evaluateTradeEligibility, type EligibilityResult } from "./TradeEligibilityEngine";
 import type { AnalysisSnapshot, Prediction } from "@/analysis/types";
 
@@ -29,6 +31,15 @@ export class MultiSymbolScanner {
     this.selectedSymbol = null;
     this.unsubscribe?.();
     this.unsubscribe = MarketEngine.subscribe(() => this.emit());
+    // Ensure we have a discovered list of available Continuous Indices as a
+    // conservative fallback for the scanner in case MarketEngine.symbols is
+    // not yet populated due to a discovery race.
+    try {
+      void DerivMarketRegistry.discover();
+    } catch {
+      // Non-fatal — discovery may fail if socket not ready; scanner will still
+      // read from MarketEngine.symbols when available.
+    }
     this.emit();
   }
 
@@ -50,7 +61,8 @@ export class MultiSymbolScanner {
   }
 
   get opportunities(): MarketOpportunity[] {
-    return MarketEngine.symbols
+    const sourceSymbols = AnalysisState.symbols.length ? AnalysisState.symbols : DerivMarketRegistry.available;
+    return sourceSymbols
       .map((meta) => this.toOpportunity(meta))
       .sort((a, b) => b.opportunityScore - a.opportunityScore);
   }
@@ -60,13 +72,13 @@ export class MultiSymbolScanner {
   }
 
   private toOpportunity(meta: SymbolMeta): MarketOpportunity {
-    const isActiveSymbol = meta.symbol === MarketEngine.snapshot.symbol;
-    const prediction = isActiveSymbol ? MarketEngine.prediction : null;
+    const isActiveSymbol = meta.symbol === AnalysisState.snapshot.symbol;
+    const prediction = isActiveSymbol ? AnalysisState.prediction : null;
     const snapshot = isActiveSymbol
-      ? MarketEngine.snapshot
-      : emptySnapshot(meta.symbol, MarketEngine.snapshot.window);
+      ? AnalysisState.snapshot
+      : emptySnapshot(meta.symbol, AnalysisState.snapshot.window);
     const live = isActiveSymbol && Boolean(
-      MarketEngine.diagnostics.lastTickAt && Date.now() - MarketEngine.diagnostics.lastTickAt < 15_000,
+      AnalysisState.diagnostics.lastTickAt && Date.now() - AnalysisState.diagnostics.lastTickAt < 15_000,
     );
     const eligibility = prediction
       ? evaluateTradeEligibility({
@@ -75,7 +87,7 @@ export class MultiSymbolScanner {
           minimumConfidence: this.minimumConfidence,
           feedLive: live,
           marketOpen: meta.open,
-          calibratedSamples: MarketEngine.calibration.snapshot().sessionSamples,
+          calibratedSamples: AnalysisState.calibration.snapshot().sessionSamples,
         })
       : null;
     const opportunityScore = prediction

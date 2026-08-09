@@ -1,4 +1,6 @@
 import { MarketEngine } from "@/market/MarketEngine";
+import AnalysisState from "@/stores/analysisState";
+import { DerivMarketRegistry } from "@/market/DerivMarketRegistry";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
 import { useBotStore } from "@/stores/botStore";
 import { useTradeStore } from "@/stores/tradeStore";
@@ -46,7 +48,24 @@ class BotEngineImpl {
       throw new Error("The selected account does not have enough available balance.");
     }
     this.assertRiskLimits(stake);
-    const symbols = MarketEngine.symbols;
+    const symbols = AnalysisState.symbols;
+
+    // Diagnostic assertion: if Analysis (MarketEngine) has no symbols but the
+    // market registry discovered available markets, surface a developer log
+    // so integration issues can be investigated without changing behavior.
+    try {
+      const registryAvailable = DerivMarketRegistry.available;
+      if (symbols.length === 0 && registryAvailable.length > 0) {
+        const msg =
+          "BOT INTEGRATION ERROR: Analysis Engine contains live markets, but Bot received zero markets.";
+        useBotStore.getState().addActivity(msg);
+        // Helpful console output for developer diagnostics.
+        // eslint-disable-next-line no-console
+        console.error(msg, { marketEngineSymbols: symbols.length, registry: registryAvailable.length });
+      }
+    } catch (err) {
+      // Non-fatal: registry may not be ready; ignore errors here.
+    }
 
     this.running = true;
     this.status = "scanning";
