@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { AnalysisPage } from "./app.analysis";
 import { motion } from "framer-motion";
 import { Loader2, LogIn, ShieldCheck, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -29,7 +30,7 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: LoginPage,
+  component: RootWrapper,
 });
 
 function LoginPage() {
@@ -41,8 +42,8 @@ function LoginPage() {
   useThemeEffect();
 
   useEffect(() => {
-    if (authenticated) void navigate({ to: "/app/analysis", replace: true });
-  }, [authenticated, navigate]);
+    if (authenticated) return; // when authenticated, this route will render AnalysisPage below
+  }, [authenticated]);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -168,4 +169,11 @@ function LoginPage() {
       </motion.div>
     </div>
   );
+}
+
+/** Root route wrapper: render `AnalysisPage` when authenticated, otherwise show the login UI. */
+export function RootWrapper() {
+  const authenticated = useAuthStore(selectIsAuthenticated);
+  useThemeEffect();
+  return authenticated ? <AnalysisPage /> : <LoginPage />;
 }
