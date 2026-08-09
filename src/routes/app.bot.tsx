@@ -87,12 +87,12 @@ function BotPage() {
             <Slider
               className="mt-2"
               value={[minimumConfidence]}
-              min={30}
+              min={1}
               max={98}
               step={1}
               disabled={running}
               onValueChange={(value) => {
-                const next = value[0] ?? 30;
+                const next = value[0] ?? 1;
                 setMinimumConfidence(next);
                 engine.setMinimumConfidence(next);
               }}
