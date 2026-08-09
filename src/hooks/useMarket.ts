@@ -1,9 +1,10 @@
 /** React bindings for the single MarketEngine + TradingEngine instances. */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import { MarketEngine } from "@/market/MarketEngine";
+import { MarketEngine, emptySnapshot } from "@/market/MarketEngine";
 import { TradingEngine } from "@/market/TradingEngine";
 import { selectActiveToken, useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useAnalysisStateStore } from "@/stores/analysisStateStore";
 
 function useEngineVersion() {
   return useSyncExternalStore(
@@ -77,6 +78,69 @@ export function useMarketSession() {
   useEffect(() => {
     if (MarketEngine.accounts.length) mergeAccounts(MarketEngine.accounts);
   }, [version, mergeAccounts]);
+
+  useEffect(() => {
+    const state = useAnalysisStateStore.getState();
+    const markets = MarketEngine.symbols.map((meta) => {
+      const isActiveSymbol = meta.symbol === MarketEngine.snapshot.symbol;
+      const snapshot = isActiveSymbol
+        ? MarketEngine.snapshot
+        : emptySnapshot(meta.symbol, MarketEngine.snapshot.window);
+      const prediction = isActiveSymbol ? MarketEngine.prediction : null;
+      const confidence = prediction?.confidence ?? 0;
+      const strategyAgreement = prediction?.strategyAgreement ?? 0;
+      const opportunityScore = prediction
+        ? Math.round(
+            prediction.confidence * 0.35 +
+              prediction.strategyAgreement * 0.25 +
+              prediction.predictionHealth * 0.2 +
+              snapshot.quality.overall * 0.2,
+          )
+        : 0;
+      return {
+        symbol: meta.symbol,
+        displayName: meta.displayName,
+        open: meta.open,
+        isLive:
+          Boolean(MarketEngine.diagnostics.lastTickAt) &&
+          Date.now() - (MarketEngine.diagnostics.lastTickAt ?? 0) < 15_000 &&
+          isActiveSymbol,
+        latestPrice: snapshot.live.currentPrice,
+        latestDigit: snapshot.live.currentDigit,
+        latestEpoch: snapshot.updatedAt,
+        tickHistory: snapshot.digits,
+        bufferSize: snapshot.live.bufferSize,
+        snapshot,
+        prediction,
+        confidence,
+        strategyAgreement,
+        opportunityScore,
+        targetDigit: prediction?.targetDigit ?? null,
+        entryTrigger: prediction?.entryTrigger ?? null,
+        recommendedDuration: prediction?.suggestedDuration ?? null,
+        marketQuality: snapshot.quality.overall,
+        volatility: snapshot.quality.volatility,
+        noise: snapshot.quality.noise,
+        signalStability: snapshot.quality.signalStability,
+        predictionTimestamp: prediction?.createdAt ?? null,
+        lastAnalysisUpdate: snapshot.updatedAt,
+        eligible: null,
+        rejectionReasons: [],
+      };
+    });
+
+    state.setSharedState({
+      markets,
+      marketCount: markets.length,
+      readyMarkets: markets.filter((m) => m.prediction != null && m.bufferSize > 0).length,
+      analysisUpdateId: state.analysisUpdateId + 1,
+      lastAnalysisUpdateAt: Date.now(),
+      analysisStatus:
+        MarketEngine.diagnostics.socket === "connected" && MarketEngine.diagnostics.feed === "streaming"
+          ? "connected"
+          : "disconnected",
+    });
+  }, [version]);
 }
 
 export function useAnalysisSnapshot() {
@@ -101,14 +165,11 @@ export function useSymbolCatalogue() {
 }
 
 export function useAnalysisState() {
-  useEngineVersion();
-  return {
-    symbols: MarketEngine.symbols,
-    snapshot: MarketEngine.snapshot,
-    prediction: MarketEngine.prediction,
-    entry: MarketEngine.entry,
-    diagnostics: MarketEngine.diagnostics,
-  };
+  return useSyncExternalStore(
+    (cb) => useAnalysisStateStore.subscribe(cb),
+    () => useAnalysisStateStore.getState(),
+    () => useAnalysisStateStore.getState(),
+  );
 }
 
 /** Last N digits for the live tape, newest last. */

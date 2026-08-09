@@ -1,6 +1,7 @@
-import { MarketEngine, emptySnapshot, type SymbolMeta } from "@/market/MarketEngine";
+import { MarketEngine } from "@/market/MarketEngine";
 import { evaluateTradeEligibility, type EligibilityResult } from "./TradeEligibilityEngine";
 import type { AnalysisSnapshot, Prediction } from "@/analysis/types";
+import { useAnalysisStateStore, type AnalysisMarketState } from "@/stores/analysisStateStore";
 
 type Listener = () => void;
 
@@ -24,11 +25,11 @@ export class MultiSymbolScanner {
   private selectedSymbol: string | null = null;
   version = 0;
 
-  async start(_symbols: SymbolMeta[], minimumConfidence: number) {
+  async start(minimumConfidence: number) {
     this.minimumConfidence = minimumConfidence;
     this.selectedSymbol = null;
     this.unsubscribe?.();
-    this.unsubscribe = MarketEngine.subscribe(() => this.emit());
+    this.unsubscribe = useAnalysisStateStore.subscribe(() => this.emit());
     this.emit();
   }
 
@@ -50,8 +51,9 @@ export class MultiSymbolScanner {
   }
 
   get opportunities(): MarketOpportunity[] {
-    return MarketEngine.symbols
-      .map((meta) => this.toOpportunity(meta))
+    return useAnalysisStateStore
+      .getState()
+      .markets.map((market) => this.toOpportunity(market))
       .sort((a, b) => b.opportunityScore - a.opportunityScore);
   }
 
@@ -59,42 +61,30 @@ export class MultiSymbolScanner {
     return this.opportunities.find((opportunity) => opportunity.eligibility?.eligible) ?? null;
   }
 
-  private toOpportunity(meta: SymbolMeta): MarketOpportunity {
-    const isActiveSymbol = meta.symbol === MarketEngine.snapshot.symbol;
-    const prediction = isActiveSymbol ? MarketEngine.prediction : null;
-    const snapshot = isActiveSymbol
-      ? MarketEngine.snapshot
-      : emptySnapshot(meta.symbol, MarketEngine.snapshot.window);
-    const live = isActiveSymbol && Boolean(
-      MarketEngine.diagnostics.lastTickAt && Date.now() - MarketEngine.diagnostics.lastTickAt < 15_000,
-    );
+  private toOpportunity(market: AnalysisMarketState): MarketOpportunity {
+    const prediction = market.prediction;
+    const snapshot = market.snapshot;
+    const live = market.isLive;
     const eligibility = prediction
       ? evaluateTradeEligibility({
           snapshot,
           prediction,
           minimumConfidence: this.minimumConfidence,
           feedLive: live,
-          marketOpen: meta.open,
+          marketOpen: market.open,
           calibratedSamples: MarketEngine.calibration.snapshot().sessionSamples,
         })
       : null;
-    const opportunityScore = prediction
-      ? Math.round(
-          prediction.confidence * 0.35 +
-            prediction.strategyAgreement * 0.25 +
-            prediction.predictionHealth * 0.2 +
-            snapshot.quality.overall * 0.2,
-        )
-      : 0;
-    let status: MarketOpportunity["status"] = meta.open ? "warming" : "unavailable";
+    const opportunityScore = market.opportunityScore;
+    let status: MarketOpportunity["status"] = market.open ? "warming" : "unavailable";
     if (prediction) status = eligibility?.eligible ? "qualified" : "watching";
-    if (this.selectedSymbol === meta.symbol) status = "selected";
+    if (this.selectedSymbol === market.symbol) status = "selected";
     return {
-      symbol: meta.symbol,
-      displayName: meta.displayName,
-      open: meta.open,
+      symbol: market.symbol,
+      displayName: market.displayName,
+      open: market.open,
       live,
-      lastTickAt: MarketEngine.diagnostics.lastTickAt,
+      lastTickAt: market.lastTickAt,
       snapshot,
       prediction,
       eligibility,

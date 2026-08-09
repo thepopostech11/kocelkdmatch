@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { useBotEngine, useScannerOpportunities } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
+import { useAnalysisStateStore } from "@/stores/analysisStateStore";
 
 export const Route = createFileRoute("/app/bot")({
   head: () => ({
@@ -28,6 +29,15 @@ function BotPage() {
   const account = useAccountInfo();
   const diagnostics = useDiagnostics();
   const analysisState = useAnalysisState();
+  const botState = useAnalysisStateStore((s) => ({
+    analysisStatus: s.analysisStatus,
+    analysisUpdateId: s.analysisUpdateId,
+    lastAnalysisUpdateAt: s.lastAnalysisUpdateAt,
+    botLastUpdateId: s.botLastUpdateId,
+    botLastUpdateAt: s.botLastUpdateAt,
+    botMarketCount: s.botMarketCount,
+    sharedStatus: s.sharedStatus,
+  }));
   const stake = useBotStore((state) => state.stake);
   const minimumConfidence = useBotStore((state) => state.minimumConfidence);
   const stats = useBotStore((state) => state.stats);
@@ -35,9 +45,11 @@ function BotPage() {
   const setStake = useBotStore((state) => state.setStake);
   const setMinimumConfidence = useBotStore((state) => state.setMinimumConfidence);
   const [actionError, setActionError] = useState<string | null>(null);
-  const marketCount = analysisState.symbols.length;
-  const readyMarkets = opportunities.length;
+  const marketCount = analysisState.marketCount;
+  const readyMarkets = analysisState.readyMarkets;
   const qualifiedMarkets = opportunities.filter((item) => item.eligibility?.eligible).length;
+  const scannerSyncDelta = marketCount - botState.botMarketCount;
+  const scannerSyncLabel = scannerSyncDelta === 0 ? "synced" : `out of sync (${scannerSyncDelta > 0 ? `missing ${scannerSyncDelta}` : `extra ${Math.abs(scannerSyncDelta)}`})`;
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;
@@ -73,6 +85,8 @@ function BotPage() {
             <span>Authorization: <strong className="text-foreground">{account.authorised ? "verified" : "unavailable"}</strong></span>
             <span>Trading permission: <strong className="text-foreground">{diagnostics.tradingPermission ? "enabled" : "not granted"}</strong></span>
             <span>Analysis markets: <strong className="text-foreground">{marketCount} symbol{marketCount === 1 ? "" : "s"}</strong></span>
+            <span>Ready markets: <strong className="text-foreground">{readyMarkets}</strong></span>
+            <span>Qualified: <strong className="text-foreground">{qualifiedMarkets}</strong></span>
           </div>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">
@@ -143,6 +157,7 @@ function BotPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="panel p-4"><h2 className="text-sm font-bold">Bot Session · Real-Money Statistics</h2><dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3"><Metric label="Markets scanned" value={String(stats.marketsScanned)} /><Metric label="Opportunities" value={String(stats.opportunitiesFound)} /><Metric label="Rejected" value={String(stats.opportunitiesRejected)} /><Metric label="Real trades" value={String(stats.realTradesExecuted)} /><Metric label="Wins / Losses" value={`${stats.wins} / ${stats.losses}`} /><Metric label="Win rate" value={`${stats.realTradesExecuted ? ((stats.wins / stats.realTradesExecuted) * 100).toFixed(1) : "0.0"}%`} /><Metric label="Total P&L" value={`${stats.totalPnl >= 0 ? "+" : ""}${stats.totalPnl.toFixed(2)} ${account.currency}`} /><Metric label="Avg confidence" value={`${stats.realTradesExecuted ? (stats.confidenceTotal / stats.realTradesExecuted).toFixed(1) : "0.0"}%`} /><Metric label="Avg agreement" value={`${stats.realTradesExecuted ? (stats.agreementTotal / stats.realTradesExecuted).toFixed(1) : "0.0"}%`} /><Metric label="Best symbol" value={stats.bestSymbol} /><Metric label="Best strategy" value={stats.bestStrategy} /></dl></div>
+        <div className="panel p-4"><h2 className="text-sm font-bold">Analysis / Bot Sync</h2><dl className="mt-3 grid grid-cols-2 gap-3 text-xs"><Metric label="Analysis engine" value={botState.analysisStatus === "connected" ? "CONNECTED" : "DISCONNECTED"} /><Metric label="Shared state" value={botState.sharedStatus.toUpperCase()} /><Metric label="Markets" value={String(marketCount)} /><Metric label="Ready" value={String(readyMarkets)} /><Metric label="Bot-visible" value={String(botState.botMarketCount)} /><Metric label="Scanner sync" value={scannerSyncLabel.toUpperCase()} /><Metric label="Analysis update ID" value={String(botState.analysisUpdateId)} /><Metric label="Bot update ID" value={String(botState.botLastUpdateId)} /><Metric label="Analysis last update" value={botState.lastAnalysisUpdateAt ? new Date(botState.lastAnalysisUpdateAt).toLocaleTimeString([], { hour12: false }) : "—"} /><Metric label="Bot last update" value={botState.botLastUpdateAt ? new Date(botState.botLastUpdateAt).toLocaleTimeString([], { hour12: false }) : "—"} /><Metric label="Min confidence" value={`${minimumConfidence}%`} /></dl></div>
         <div className="panel p-4"><h2 className="flex items-center gap-2 text-sm font-bold"><Activity className="size-4" />Bot Activity</h2><div className="mt-3 max-h-52 space-y-2 overflow-y-auto font-mono text-xs">{activity.length ? activity.map((item) => <div key={item.id} className="flex gap-3 border-b border-border/60 pb-2"><time className="text-muted-foreground">{new Date(item.at).toLocaleTimeString([], { hour12: false })}</time><span>{item.message}</span></div>) : <p className="text-muted-foreground">No activity this session.</p>}</div></div>
       </section>
 
