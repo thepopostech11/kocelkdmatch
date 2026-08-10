@@ -1,6 +1,5 @@
 import { MarketEngine } from "@/market/MarketEngine";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
-import { useAnalysisStateStore } from "@/stores/analysisStateStore";
 import { useBotStore } from "@/stores/botStore";
 import { useTradeStore } from "@/stores/tradeStore";
 import { MultiSymbolScanner, type MarketOpportunity } from "./MultiSymbolScanner";
@@ -48,7 +47,7 @@ class BotEngineImpl {
       throw new Error("The selected account does not have enough available balance.");
     }
     this.assertRiskLimits(stake);
-    const analysisMarkets = useAnalysisStateStore.getState().markets;
+    const symbols = MarketEngine.symbols;
 
     this.running = true;
     this.status = "scanning";
@@ -56,8 +55,8 @@ class BotEngineImpl {
     this.locked = null;
     this.lastObservedEpoch = 0;
     useBotStore.getState().resetSession();
-    if (analysisMarkets.length > 0) {
-      useBotStore.getState().addActivity(`Scanning ${analysisMarkets.length} shared analysis markets`);
+    if (symbols.length > 0) {
+      useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
     } else {
       useBotStore.getState().addActivity(
         "Connected to shared Analysis Engine — discovering available analysis markets...",
@@ -65,7 +64,7 @@ class BotEngineImpl {
     }
     this.scannerUnsubscribe?.();
     this.scannerUnsubscribe = this.scanner.subscribe(() => this.evaluate());
-    await this.scanner.start(minimumConfidence);
+    await this.scanner.start(symbols, minimumConfidence);
     this.evaluate();
     this.emit();
   }
@@ -90,7 +89,6 @@ class BotEngineImpl {
     const opportunities = this.scanner.opportunities;
     const marketCount = opportunities.length;
     const store = useBotStore.getState();
-    useAnalysisStateStore.getState().recordBotReceipt(marketCount);
     if (marketCount !== this.lastKnownMarketCount) {
       this.lastKnownMarketCount = marketCount;
       if (marketCount > 0) {
