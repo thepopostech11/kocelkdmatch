@@ -234,3 +234,78 @@ function BotPage() {
 function Metric({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 font-semibold">{value}</dd></div>;
 }
+
+function Counter({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-surface-2/60 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="font-mono text-sm font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function statusLabel(status: MarketOpportunity["status"]) {
+  switch (status) {
+    case "best":
+      return "BEST OPPORTUNITY";
+    case "selected":
+      return "SELECTED";
+    case "qualified":
+      return "QUALIFIED";
+    case "below-threshold":
+      return "BELOW THRESHOLD";
+    case "unavailable":
+      return "UNAVAILABLE";
+    default:
+      return "WARMING UP";
+  }
+}
+
+function ScannerCard({ index, item }: { index: number; item: MarketOpportunity }) {
+  const tone =
+    item.status === "best" || item.status === "selected"
+      ? "border-primary/60 bg-primary/5"
+      : item.status === "qualified"
+        ? "border-success/50"
+        : "border-border";
+  const statusTone =
+    item.status === "best" || item.status === "selected"
+      ? "text-primary"
+      : item.status === "qualified"
+        ? "text-success"
+        : "text-muted-foreground";
+  return (
+    <article className={`rounded-xl border ${tone} bg-card p-3`}>
+      <header className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-xs font-bold">
+          <span className="mr-1.5 font-mono text-muted-foreground">{String(index).padStart(2, "0")}</span>
+          {item.displayName}
+        </p>
+        <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold uppercase text-muted-foreground">
+          <span className={`size-1.5 rounded-full ${item.live ? "bg-success animate-pulse" : "bg-muted-foreground"}`} />
+          {item.live ? "Live" : "Idle"}
+        </span>
+      </header>
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+        <Row label="Digit" value={item.bufferSize ? String(item.snapshot.live.currentDigit) : "—"} />
+        <Row label="Confidence" value={item.prediction ? `${item.confidence}%` : "—"} />
+        <Row label="Opportunity" value={item.prediction ? `${item.opportunityScore}%` : "—"} />
+        <Row label="Target" value={item.prediction ? String(item.prediction.targetDigit) : "—"} />
+        <Row label="Trigger" value={item.prediction ? String(item.prediction.entryTrigger) : "—"} />
+        <Row label="Duration" value={item.prediction ? `${item.prediction.suggestedDuration}t` : "—"} />
+        <Row label="Buffer" value={`${item.bufferSize}`} />
+        <Row label="Last tick" value={item.lastTickAt ? new Date(item.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+      </div>
+      <p className={`mt-2 text-[11px] font-bold uppercase ${statusTone}`}>{statusLabel(item.status)}</p>
+    </article>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono font-semibold tabular-nums">{value}</span>
+    </div>
+  );
+}
