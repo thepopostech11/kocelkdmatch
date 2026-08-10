@@ -1,4 +1,4 @@
-﻿/* eslint-disable */
+/* eslint-disable */
 
 // @ts-nocheck
 
@@ -11,13 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as BotRouteImport } from './routes/bot'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppAnalysisRouteImport } from './routes/app.analysis'
 import { Route as AppBotRouteImport } from './routes/app.bot'
 import { Route as AppManualTradeRouteImport } from './routes/app.manual-trade'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
-import { Route as BotRouteImport } from './routes/bot'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -27,6 +27,11 @@ const IndexRoute = IndexRouteImport.update({
 const AppRoute = AppRouteImport.update({
   id: '/app',
   path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BotRoute = BotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -60,30 +65,24 @@ const OauthCallbackRoute = OauthCallbackRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 
-const BotRoute = BotRouteImport.update({
-  id: '/bot',
-  path: '/bot',
-  getParentRoute: () => rootRouteImport,
-} as any)
-
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/bot': typeof BotRoute
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
-  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bot': typeof BotRoute
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
-  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app': typeof AppIndexRoute
 }
@@ -91,11 +90,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
+  '/bot': typeof BotRoute
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
-  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
 }
@@ -104,32 +103,32 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/app'
+    | '/bot'
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
-    | '/bot'
     | '/oauth/callback'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/bot'
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
-    | '/bot'
     | '/oauth/callback'
     | '/app'
   id:
     | '__root__'
     | '/'
     | '/app'
+    | '/bot'
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
-    | '/bot'
     | '/oauth/callback'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -155,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/app'
       fullPath: '/app'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bot': {
+      id: '/bot'
+      path: '/bot'
+      fullPath: '/bot'
+      preLoaderRoute: typeof BotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -191,13 +197,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/settings'
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
-    }
-    '/bot': {
-      id: '/bot'
-      path: '/bot'
-      fullPath: '/bot'
-      preLoaderRoute: typeof BotRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/oauth/callback': {
       id: '/oauth/callback'
