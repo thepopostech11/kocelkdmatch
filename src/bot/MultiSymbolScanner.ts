@@ -84,7 +84,7 @@ export class MultiSymbolScanner {
       displayName: market.displayName,
       open: market.open,
       live,
-      lastTickAt: market.lastTickAt,
+      lastTickAt: market.lastAnalysisUpdate,
       snapshot,
       prediction,
       eligibility,
