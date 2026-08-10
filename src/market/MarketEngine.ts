@@ -127,7 +127,17 @@ class MarketEngineImpl {
   private token: string | null = null;
   private pipSize = 2;
 
+  /** Shared multi-market scan: one rolling buffer per Continuous Index. */
+  private scanBuffers = new Map<string, Tick[]>();
+  private scanLastTickAt = new Map<string, number>();
+  private scanStates = new Map<string, MarketState>();
+  private scanEnabled = false;
+  /** Every symbol the shared Analysis Engine keeps analysed state for. */
+  markets: MarketState[] = [];
+  marketsUpdatedAt: number | null = null;
+
   readonly calibration = new ModelCalibrationEngine();
+
 
   private listeners = new Set<Listener>();
   private tickListeners = new Set<TickListener>();
