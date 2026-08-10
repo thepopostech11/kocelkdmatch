@@ -120,26 +120,93 @@ function BotPage() {
         {(actionError || engine.error) && <p className="text-sm text-destructive lg:col-span-2">{actionError ?? engine.error}</p>}
       </section>
 
+      <section className="panel p-3 sm:p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-bold">Live Analysis Scanner</h2>
+          <p className="text-[11px] text-muted-foreground">
+            Last analysis update:{" "}
+            <strong className="font-mono text-foreground">
+              {sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"}
+            </strong>
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
+          <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
+          <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
+          <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
+          <Counter label="Min confidence" value={`${minimumConfidence}%`} />
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {markets.length ? (
+            markets.map((item, index) => <ScannerCard key={item.symbol} index={index + 1} item={item} />)
+          ) : (
+            <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
+              Waiting for the shared Analysis Engine to publish live markets…
+            </p>
+          )}
+        </div>
+
+        {best && best.prediction && (
+          <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
+            <p className="font-bold">Best current opportunity · {best.displayName}</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
+              <Metric label="Opportunity" value={String(best.opportunityScore)} />
+              <Metric label="Target" value={String(best.prediction.targetDigit)} />
+              <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
+              <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
+            </div>
+          </div>
+        )}
+        {!qualifiedMarkets && totalMarkets > 0 && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
+          </p>
+        )}
+      </section>
+
+      <section className="panel p-3 sm:p-4">
+        <h2 className="text-sm font-bold">Shared Analysis Connection</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+          <Metric label="Analysis engine" value={diagnostics.feed === "streaming" ? "RUNNING" : diagnostics.feed.toUpperCase()} />
+          <Metric label="Analysis markets" value={String(sync.analysisMarkets)} />
+          <Metric label="Bot received" value={String(sync.botMarkets)} />
+          <Metric label="Bot subscription" value={sync.subscribed ? "CONNECTED" : "IDLE"} />
+          <Metric label="Latest tick" value={sync.lastTickAt ? new Date(sync.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+          <Metric label="Latest analysis" value={sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+          <Metric label="Confidence source" value="Analysis Engine" />
+          <Metric label="Active threshold" value={`${sync.threshold}%`} />
+        </div>
+        {sync.analysisMarkets > 0 && sync.botMarkets === 0 && (
+          <p className="mt-3 text-xs text-destructive">
+            CRITICAL INTERNAL SYNC ERROR — the Bot is not consuming the shared analysis state.
+          </p>
+        )}
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-3">
         <div className="panel p-4 lg:col-span-2">
-          <h2 className="text-sm font-bold">Live Opportunities</h2>
+          <h2 className="text-sm font-bold">Opportunity Ranking</h2>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-xs">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b text-muted-foreground"><tr>{["Symbol", "Confidence", "Opportunity", "Strategy", "Trigger", "Target", "Status"].map((label) => <th key={label} className="px-2 py-2 font-medium">{label}</th>)}</tr></thead>
-              <tbody>{opportunities.length ? opportunities.map((item) => (
+              <tbody>{markets.length ? markets.map((item) => (
                 <tr key={item.symbol} className="border-b border-border/60">
                   <td className="px-2 py-2.5 font-medium">{item.displayName}</td>
-                  <td className="px-2 py-2.5">{item.prediction?.confidence ?? 0}%</td>
+                  <td className="px-2 py-2.5">{item.confidence}%</td>
                   <td className="px-2 py-2.5">{item.opportunityScore}</td>
                   <td className="px-2 py-2.5">{item.prediction?.winningStrategy ?? "Warming up"}</td>
                   <td className="px-2 py-2.5 font-mono">{item.prediction?.entryTrigger ?? "—"}</td>
                   <td className="px-2 py-2.5 font-mono">{item.prediction?.targetDigit ?? "—"}</td>
-                  <td className="px-2 py-2.5 capitalize">{item.status}</td>
+                  <td className="px-2 py-2.5">{statusLabel(item.status)}</td>
                 </tr>
-              )) : <tr><td colSpan={7} className="px-2 py-8 text-center text-muted-foreground">{running ? "Connecting to live markets…" : "Start the bot to scan live markets"}</td></tr>}</tbody>
+              )) : <tr><td colSpan={7} className="px-2 py-8 text-center text-muted-foreground">Waiting for live analysis markets…</td></tr>}</tbody>
             </table>
           </div>
         </div>
+
 
         <div className="panel p-4">
           <h2 className="text-sm font-bold">Market Lock</h2>
