@@ -755,15 +755,37 @@ class MarketEngineImpl {
     }
 
     if (type === "history") {
-      if (this.historyTimer) clearTimeout(this.historyTimer);
+      const echo = data["echo_req"] as Record<string, unknown> | undefined;
+      const echoSymbol = echo ? String(echo["ticks_history"] ?? "") : "";
       const history = data["history"] as { prices?: number[]; times?: number[] } | undefined;
       const prices = history?.prices ?? [];
       const times = history?.times ?? [];
+
+      // Shared-scan market (not the active symbol) — feed its rolling buffer.
+      if (echoSymbol && echoSymbol !== this.symbol) {
+        const pip = this.pipFor(echoSymbol);
+        this.ingestScanTicks(
+          echoSymbol,
+          prices.map((quote, i) => ({
+            epoch: times[i] ?? Date.now() / 1000,
+            quote,
+            digit: extractDigit(quote, pip),
+            pipSize: pip,
+            receivedAt: Date.now(),
+          })),
+          true,
+        );
+        this.emit();
+        return;
+      }
+
+      if (this.historyTimer) clearTimeout(this.historyTimer);
 
       if (!prices.length) {
         if (!this.polling) this.startFallbackFeed();
         return;
       }
+
 
       this.pipSize = this.pipFor(this.symbol);
       const incoming = prices.map((quote, i) => ({
