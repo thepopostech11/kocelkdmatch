@@ -26,7 +26,7 @@ export const Route = createFileRoute("/app/bot")({
 
 function BotPage() {
   const engine = useBotEngine();
-  const opportunities = useScannerOpportunities();
+  const markets = useScannerMarkets();
   const account = useAccountInfo();
   const diagnostics = useDiagnostics();
   const analysisState = useAnalysisState();
@@ -37,12 +37,23 @@ function BotPage() {
   const setStake = useBotStore((state) => state.setStake);
   const setMinimumConfidence = useBotStore((state) => state.setMinimumConfidence);
   const [actionError, setActionError] = useState<string | null>(null);
-  const marketCount = analysisState.symbols.length;
-  const readyMarkets = opportunities.length;
-  const qualifiedMarkets = opportunities.filter((item) => item.eligibility?.eligible).length;
+
+  // The scanner filter always mirrors the slider, even before the bot starts.
+  useEffect(() => {
+    engine.setMinimumConfidence(minimumConfidence);
+  }, [engine, minimumConfidence]);
+
+  const sync = engine.sync;
+  const totalMarkets = markets.length;
+  const liveMarkets = markets.filter((item) => item.live).length;
+  const readyMarkets = markets.filter((item) => item.ready).length;
+  const qualifiedMarkets = markets.filter((item) => item.qualified).length;
+  const marketCount = analysisState.symbols.length || totalMarkets;
+  const best = markets.find((item) => item.status === "best" || item.status === "selected") ?? null;
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;
+
 
   const start = async () => {
     setActionError(null);
