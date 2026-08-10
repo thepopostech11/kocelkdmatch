@@ -10,7 +10,7 @@
  */
 import { ConnectionManager } from "@/websocket/ConnectionManager";
 import type { WebSocketManager } from "@/websocket/WebSocketManager";
-import { DERIV_CONFIG, SYMBOL_PIPS } from "@/config/app";
+import { DERIV_CONFIG, SYMBOLS, SYMBOL_PIPS } from "@/config/app";
 import {
   computeDigitStats,
   computeLiveStatistics,
@@ -26,10 +26,13 @@ import type { DerivAccount } from "@/types";
 import { selectActiveAccount, useAuthStore } from "@/stores/authStore";
 
 const MAX_BUFFER = 1000;
+/** Rolling buffer size kept for every non-active shared-scan market. */
+const SCAN_BUFFER = 400;
 /** If no tick arrives within this window we switch to the fallback stream. */
 const HISTORY_TIMEOUT = 6000;
 /** A feed with no tick for this long is considered stalled and re-subscribed. */
 const STALL_TIMEOUT = 25000;
+
 
 export type AccountInfo = {
   fullname: string;
