@@ -47,7 +47,7 @@ class BotEngineImpl {
       throw new Error("The selected account does not have enough available balance.");
     }
     this.assertRiskLimits(stake);
-    const symbols = MarketEngine.symbols;
+    const markets = MarketEngine.markets;
 
     this.running = true;
     this.status = "scanning";
@@ -55,8 +55,8 @@ class BotEngineImpl {
     this.locked = null;
     this.lastObservedEpoch = 0;
     useBotStore.getState().resetSession();
-    if (symbols.length > 0) {
-      useBotStore.getState().addActivity(`Scanning ${symbols.length} analysis markets`);
+    if (markets.length > 0) {
+      useBotStore.getState().addActivity(`Scanning ${markets.length} shared analysis markets`);
     } else {
       useBotStore.getState().addActivity(
         "Connected to shared Analysis Engine — discovering available analysis markets...",
@@ -64,7 +64,7 @@ class BotEngineImpl {
     }
     this.scannerUnsubscribe?.();
     this.scannerUnsubscribe = this.scanner.subscribe(() => this.evaluate());
-    await this.scanner.start(symbols, minimumConfidence);
+    await this.scanner.start(null, minimumConfidence);
     this.evaluate();
     this.emit();
   }
@@ -97,7 +97,7 @@ class BotEngineImpl {
         store.addActivity("Waiting for live analysis markets from the shared engine...");
       }
     }
-    if (marketCount === 0 && MarketEngine.snapshot.live.bufferSize > 0) {
+    if (marketCount === 0 && MarketEngine.markets.length > 0) {
       console.error(
         "BOT INTEGRATION ERROR: Analysis Engine contains live markets, but Bot received zero markets.",
       );
@@ -106,7 +106,7 @@ class BotEngineImpl {
 
     if (this.locked) {
       const refreshed = opportunities.find((item) => item.symbol === this.locked?.symbol) ?? null;
-      if (!refreshed?.eligibility?.eligible || !refreshed.prediction || !refreshed.live) {
+      if (!refreshed?.qualified || !refreshed.prediction || !refreshed.live) {
         useBotStore.getState().addActivity("Signal invalidated — releasing market lock");
         this.locked = null;
         this.scanner.select(null);
@@ -125,7 +125,7 @@ class BotEngineImpl {
       return;
     }
 
-    const strongest = opportunities.find((item) => item.eligibility?.eligible) ?? null;
+    const strongest = this.scanner.strongest;
     if (!strongest) {
       this.status = "scanning";
       this.emit();
@@ -225,12 +225,12 @@ class BotEngineImpl {
 
   private updateScanStats(opportunities: MarketOpportunity[]) {
     const store = useBotStore.getState();
-    const qualified = opportunities.filter((item) => item.eligibility?.eligible);
+    const qualified = opportunities.filter((item) => item.qualified);
     store.setStats({
       ...store.stats,
       marketsScanned: opportunities.length,
       opportunitiesFound: qualified.length,
-      opportunitiesRejected: opportunities.filter((item) => item.prediction && !item.eligibility?.eligible).length,
+      opportunitiesRejected: opportunities.filter((item) => item.prediction && !item.qualified).length,
       bestSymbol: opportunities[0]?.displayName ?? store.stats.bestSymbol,
       bestStrategy: opportunities[0]?.prediction?.winningStrategy ?? store.stats.bestStrategy,
     });
