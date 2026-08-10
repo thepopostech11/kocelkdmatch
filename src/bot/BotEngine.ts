@@ -144,7 +144,26 @@ class BotEngineImpl {
   private async execute(opportunity: MarketOpportunity) {
     const prediction = opportunity.prediction;
     if (!prediction || !this.running || this.submitting) return;
+
+    // Final pre-trade check — re-read the live shared analysis snapshot.
+    const fresh = this.scanner.opportunities.find((item) => item.symbol === opportunity.symbol);
+    const freshPrediction = fresh?.prediction;
+    const stale = !fresh?.qualified || !fresh.live || !freshPrediction
+      || freshPrediction.targetDigit !== prediction.targetDigit
+      || freshPrediction.entryTrigger !== prediction.entryTrigger
+      || freshPrediction.suggestedDuration !== prediction.suggestedDuration
+      || Date.now() - fresh.snapshot.updatedAt > 15_000;
+    if (stale) {
+      useBotStore.getState().addActivity("Signal invalidated at final check — returning to scanning");
+      this.locked = null;
+      this.scanner.select(null);
+      this.status = "scanning";
+      this.emit();
+      return;
+    }
+
     const { stake } = useBotStore.getState();
+
     const account = MarketEngine.account;
     if (!account.authorised || !MarketEngine.diagnostics.tradingPermission) {
       this.fail("Trading permission was lost. No order was submitted.");
