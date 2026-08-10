@@ -240,6 +240,21 @@ class BotEngineImpl {
     this.scanner.select(null);
     this.status = this.running ? "scanning" : "stopped";
     this.emit();
+    // Re-scan ALL shared analysis markets immediately after every trade.
+    if (this.running) this.evaluate();
+  }
+
+  /** Debug/telemetry — proves the Bot is consuming the shared analysis state. */
+  get sync() {
+    return {
+      analysisMarkets: MarketEngine.markets.length,
+      botMarkets: this.scanner.opportunities.length,
+      subscribed: this.scanner.subscribed,
+      lastAnalysisAt: MarketEngine.marketsUpdatedAt,
+      lastTickAt: MarketEngine.diagnostics.lastTickAt,
+      threshold: this.scanner.threshold,
+      running: this.running,
+    };
   }
 
   private updateScanStats(opportunities: MarketOpportunity[]) {
