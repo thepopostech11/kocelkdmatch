@@ -1,12 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Activity, Bot, CircleStop, Play, Radar, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { useBotEngine, useScannerOpportunities } from "@/hooks/useBot";
+import { useBotEngine, useScannerMarkets } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
+import type { MarketOpportunity } from "@/bot/MultiSymbolScanner";
+
 
 export const Route = createFileRoute("/app/bot")({
   head: () => ({
