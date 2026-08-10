@@ -1,5 +1,5 @@
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+﻿import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { useEffect, type ReactNode } from "react";
 import { AnimatePresence } from "framer-motion";
 import { TopBar } from "@/components/layout/TopBar";
 import { StatusBar } from "@/components/layout/StatusBar";
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/app")({
   component: AppLayout,
 });
 
-function AppLayout() {
+function AppLayout({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
 
   const authenticated = useAuthStore(selectIsAuthenticated);
@@ -49,11 +49,10 @@ function AppLayout() {
       <TopBar onLogout={handleLogout} />
 
       <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <Outlet />
+        {children ?? <Outlet />}
       </main>
 
       <StatusBar />
     </div>
   );
 }
-

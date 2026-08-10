@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 
 // @ts-nocheck
 
@@ -17,6 +17,7 @@ import { Route as AppBotRouteImport } from './routes/app.bot'
 import { Route as AppManualTradeRouteImport } from './routes/app.manual-trade'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
+import { Route as BotRouteImport } from './routes/bot'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -59,6 +60,12 @@ const OauthCallbackRoute = OauthCallbackRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 
+const BotRoute = BotRouteImport.update({
+  id: '/bot',
+  path: '/bot',
+  getParentRoute: () => rootRouteImport,
+} as any)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
@@ -66,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
+  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
 }
@@ -75,6 +83,7 @@ export interface FileRoutesByTo {
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
+  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app': typeof AppIndexRoute
 }
@@ -86,6 +95,7 @@ export interface FileRoutesById {
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
   '/app/settings': typeof AppSettingsRoute
+  '/bot': typeof BotRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
 }
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
+    | '/bot'
     | '/oauth/callback'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
+    | '/bot'
     | '/oauth/callback'
     | '/app'
   id:
@@ -117,6 +129,7 @@ export interface FileRouteTypes {
     | '/app/bot'
     | '/app/manual-trade'
     | '/app/settings'
+    | '/bot'
     | '/oauth/callback'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -124,6 +137,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  BotRoute: typeof BotRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
 }
 
@@ -178,6 +192,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/bot': {
+      id: '/bot'
+      path: '/bot'
+      fullPath: '/bot'
+      preLoaderRoute: typeof BotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/callback': {
       id: '/oauth/callback'
       path: '/oauth/callback'
@@ -209,6 +230,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  BotRoute: BotRoute,
   OauthCallbackRoute: OauthCallbackRoute,
 }
 export const routeTree = rootRouteImport
