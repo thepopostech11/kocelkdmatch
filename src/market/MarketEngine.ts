@@ -379,8 +379,108 @@ class MarketEngineImpl {
     if (this.historyTimer) clearTimeout(this.historyTimer);
     this.historyTimer = setTimeout(() => this.startFallbackFeed(), HISTORY_TIMEOUT);
 
+    // The forget_all above also drops the shared-scan streams — restore them.
+    if (this.scanEnabled) this.subscribeScanSymbols();
+
     this.emit();
   }
+
+  /* ------------------------------------------------- shared multi-market scan */
+
+  /** Symbols the shared engine analyses (Continuous Indices only). */
+  private scanSymbols(): string[] {
+    const discovered = this.symbols.filter((s) => /^(R_|1HZ)/.test(s.symbol)).map((s) => s.symbol);
+    const configured = SYMBOLS.map((s) => s.value as string);
+    const merged = configured.filter((s) => !discovered.length || discovered.includes(s));
+    return merged.length ? merged : configured;
+  }
+
+  /** Starts one rolling buffer per Continuous Index on the SAME socket. */
+  enableSharedMarketScan() {
+    this.scanEnabled = true;
+    this.subscribeScanSymbols();
+    this.publishMarkets();
+  }
+
+  private subscribeScanSymbols() {
+    const socket = this.socket;
+    if (!socket) return;
+    for (const symbol of this.scanSymbols()) {
+      if (symbol === this.symbol) continue;
+      socket.send({
+        ticks_history: symbol,
+        end: "latest",
+        count: SCAN_BUFFER,
+        style: "ticks",
+        subscribe: 1,
+      });
+    }
+  }
+
+  private ingestScanTicks(symbol: string, ticks: Tick[], replace: boolean) {
+    if (!ticks.length) return;
+    const previous = replace ? [] : (this.scanBuffers.get(symbol) ?? []);
+    const lastEpoch = previous[previous.length - 1]?.epoch ?? 0;
+    const fresh = replace ? ticks : ticks.filter((t) => t.epoch > lastEpoch);
+    if (!fresh.length) return;
+    this.scanBuffers.set(symbol, [...previous, ...fresh].slice(-SCAN_BUFFER));
+    this.scanLastTickAt.set(symbol, Date.now());
+    this.recomputeMarket(symbol);
+  }
+
+  /** Runs the shared analysis pipeline for one scanned symbol. */
+  private recomputeMarket(symbol: string) {
+    const buffer = this.scanBuffers.get(symbol) ?? [];
+    const snapshot = this.buildSnapshot(symbol, buffer.slice(-this.window), buffer.length);
+    this.scanStates.set(symbol, this.toMarketState(symbol, snapshot, buffer.length, this.scanLastTickAt.get(symbol) ?? null));
+    this.publishMarkets();
+  }
+
+  private toMarketState(
+    symbol: string,
+    snapshot: AnalysisSnapshot,
+    bufferSize: number,
+    lastTickAt: number | null,
+  ): MarketState {
+    const meta = this.symbols.find((s) => s.symbol === symbol);
+    const configured = SYMBOLS.find((s) => s.value === symbol);
+    const prediction = this.predictionFor(snapshot);
+    return {
+      symbol,
+      displayName: meta?.displayName ?? configured?.label ?? symbol,
+      open: meta?.open ?? true,
+      live: Boolean(lastTickAt && Date.now() - lastTickAt < 15_000),
+      ready: bufferSize >= 100,
+      bufferSize,
+      lastTickAt,
+      snapshot,
+      prediction,
+    };
+  }
+
+  /** The unified AI decision engine — identical to the Analysis page path. */
+  private predictionFor(snapshot: AnalysisSnapshot): Prediction | null {
+    if (snapshot.digits.length < 20) return null;
+    const prediction = buildPrediction(snapshot, this.calibration);
+    prediction.strategyAgreement = Math.round(
+      strategyAgreement(snapshot, prediction.targetDigit) * 100,
+    );
+    return prediction;
+  }
+
+  private publishMarkets() {
+    const order = this.scanSymbols();
+    this.markets = order
+      .map((symbol) =>
+        symbol === this.symbol
+          ? this.toMarketState(symbol, this.snapshot, this.buffer.length, this.diagnostics.lastTickAt)
+          : this.scanStates.get(symbol) ?? null,
+      )
+      .filter((state): state is MarketState => Boolean(state));
+    this.marketsUpdatedAt = Date.now();
+  }
+
+
 
   /** Plain `ticks` subscription — used when `ticks_history` is unavailable. */
   private startFallbackFeed() {
