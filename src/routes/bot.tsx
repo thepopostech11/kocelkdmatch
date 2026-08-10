@@ -9,7 +9,7 @@ import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
 import { useAnalysisStateStore } from "@/stores/analysisStateStore";
 import { selectIsAuthenticated, useAuthStore } from "@/stores/authStore";
-import { AppLayout } from "@/routes/app";
+import { AppLayout } from "@/components/layout/AppLayout";
 
 export const Route = createFileRoute("/bot")({
   head: () => ({
