@@ -55,6 +55,25 @@ export type SymbolMeta = {
   open: boolean;
 };
 
+/**
+ * Shared per-symbol analysis state. Produced by the SAME analysis pipeline
+ * (statistics → strategies → unified decision engine) that powers the
+ * Analysis page. Consumers (Analysis UI, Bot) only read it — never recompute.
+ */
+export type MarketState = {
+  symbol: string;
+  displayName: string;
+  open: boolean;
+  live: boolean;
+  ready: boolean;
+  bufferSize: number;
+  lastTickAt: number | null;
+  snapshot: AnalysisSnapshot;
+  prediction: Prediction | null;
+};
+
+
+
 export type Diagnostics = {
   socket: "idle" | "connecting" | "connected" | "error";
   authorised: boolean;
