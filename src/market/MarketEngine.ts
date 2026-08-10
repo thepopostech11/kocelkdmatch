@@ -238,6 +238,10 @@ class MarketEngineImpl {
       this.startRateSampler();
       this.startStallWatch();
       this.subscribeSymbol(symbol);
+      // Shared multi-market analysis starts with the session, so the Bot has
+      // live state even when the Analysis page was never opened.
+      this.enableSharedMarketScan();
+
     } catch (error) {
       this.diagnostics = {
         ...this.diagnostics,
