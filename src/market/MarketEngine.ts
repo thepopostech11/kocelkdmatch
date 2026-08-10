@@ -10,7 +10,7 @@
  */
 import { ConnectionManager } from "@/websocket/ConnectionManager";
 import type { WebSocketManager } from "@/websocket/WebSocketManager";
-import { DERIV_CONFIG, SYMBOL_PIPS } from "@/config/app";
+import { DERIV_CONFIG, SYMBOLS, SYMBOL_PIPS } from "@/config/app";
 import {
   computeDigitStats,
   computeLiveStatistics,
@@ -26,10 +26,13 @@ import type { DerivAccount } from "@/types";
 import { selectActiveAccount, useAuthStore } from "@/stores/authStore";
 
 const MAX_BUFFER = 1000;
+/** Rolling buffer size kept for every non-active shared-scan market. */
+const SCAN_BUFFER = 400;
 /** If no tick arrives within this window we switch to the fallback stream. */
 const HISTORY_TIMEOUT = 6000;
 /** A feed with no tick for this long is considered stalled and re-subscribed. */
 const STALL_TIMEOUT = 25000;
+
 
 export type AccountInfo = {
   fullname: string;
@@ -51,6 +54,25 @@ export type SymbolMeta = {
   pip: number;
   open: boolean;
 };
+
+/**
+ * Shared per-symbol analysis state. Produced by the SAME analysis pipeline
+ * (statistics → strategies → unified decision engine) that powers the
+ * Analysis page. Consumers (Analysis UI, Bot) only read it — never recompute.
+ */
+export type MarketState = {
+  symbol: string;
+  displayName: string;
+  open: boolean;
+  live: boolean;
+  ready: boolean;
+  bufferSize: number;
+  lastTickAt: number | null;
+  snapshot: AnalysisSnapshot;
+  prediction: Prediction | null;
+};
+
+
 
 export type Diagnostics = {
   socket: "idle" | "connecting" | "connected" | "error";
@@ -105,7 +127,17 @@ class MarketEngineImpl {
   private token: string | null = null;
   private pipSize = 2;
 
+  /** Shared multi-market scan: one rolling buffer per Continuous Index. */
+  private scanBuffers = new Map<string, Tick[]>();
+  private scanLastTickAt = new Map<string, number>();
+  private scanStates = new Map<string, MarketState>();
+  private scanEnabled = false;
+  /** Every symbol the shared Analysis Engine keeps analysed state for. */
+  markets: MarketState[] = [];
+  marketsUpdatedAt: number | null = null;
+
   readonly calibration = new ModelCalibrationEngine();
+
 
   private listeners = new Set<Listener>();
   private tickListeners = new Set<TickListener>();
@@ -206,6 +238,10 @@ class MarketEngineImpl {
       this.startRateSampler();
       this.startStallWatch();
       this.subscribeSymbol(symbol);
+      // Shared multi-market analysis starts with the session, so the Bot has
+      // live state even when the Analysis page was never opened.
+      this.enableSharedMarketScan();
+
     } catch (error) {
       this.diagnostics = {
         ...this.diagnostics,
@@ -343,8 +379,108 @@ class MarketEngineImpl {
     if (this.historyTimer) clearTimeout(this.historyTimer);
     this.historyTimer = setTimeout(() => this.startFallbackFeed(), HISTORY_TIMEOUT);
 
+    // The forget_all above also drops the shared-scan streams — restore them.
+    if (this.scanEnabled) this.subscribeScanSymbols();
+
     this.emit();
   }
+
+  /* ------------------------------------------------- shared multi-market scan */
+
+  /** Symbols the shared engine analyses (Continuous Indices only). */
+  private scanSymbols(): string[] {
+    const discovered = this.symbols.filter((s) => /^(R_|1HZ)/.test(s.symbol)).map((s) => s.symbol);
+    const configured = SYMBOLS.map((s) => s.value as string);
+    const merged = configured.filter((s) => !discovered.length || discovered.includes(s));
+    return merged.length ? merged : configured;
+  }
+
+  /** Starts one rolling buffer per Continuous Index on the SAME socket. */
+  enableSharedMarketScan() {
+    this.scanEnabled = true;
+    this.subscribeScanSymbols();
+    this.publishMarkets();
+  }
+
+  private subscribeScanSymbols() {
+    const socket = this.socket;
+    if (!socket) return;
+    for (const symbol of this.scanSymbols()) {
+      if (symbol === this.symbol) continue;
+      socket.send({
+        ticks_history: symbol,
+        end: "latest",
+        count: SCAN_BUFFER,
+        style: "ticks",
+        subscribe: 1,
+      });
+    }
+  }
+
+  private ingestScanTicks(symbol: string, ticks: Tick[], replace: boolean) {
+    if (!ticks.length) return;
+    const previous = replace ? [] : (this.scanBuffers.get(symbol) ?? []);
+    const lastEpoch = previous[previous.length - 1]?.epoch ?? 0;
+    const fresh = replace ? ticks : ticks.filter((t) => t.epoch > lastEpoch);
+    if (!fresh.length) return;
+    this.scanBuffers.set(symbol, [...previous, ...fresh].slice(-SCAN_BUFFER));
+    this.scanLastTickAt.set(symbol, Date.now());
+    this.recomputeMarket(symbol);
+  }
+
+  /** Runs the shared analysis pipeline for one scanned symbol. */
+  private recomputeMarket(symbol: string) {
+    const buffer = this.scanBuffers.get(symbol) ?? [];
+    const snapshot = this.buildSnapshot(symbol, buffer.slice(-this.window), buffer.length);
+    this.scanStates.set(symbol, this.toMarketState(symbol, snapshot, buffer.length, this.scanLastTickAt.get(symbol) ?? null));
+    this.publishMarkets();
+  }
+
+  private toMarketState(
+    symbol: string,
+    snapshot: AnalysisSnapshot,
+    bufferSize: number,
+    lastTickAt: number | null,
+  ): MarketState {
+    const meta = this.symbols.find((s) => s.symbol === symbol);
+    const configured = SYMBOLS.find((s) => s.value === symbol);
+    const prediction = this.predictionFor(snapshot);
+    return {
+      symbol,
+      displayName: meta?.displayName ?? configured?.label ?? symbol,
+      open: meta?.open ?? true,
+      live: Boolean(lastTickAt && Date.now() - lastTickAt < 15_000),
+      ready: bufferSize >= 100,
+      bufferSize,
+      lastTickAt,
+      snapshot,
+      prediction,
+    };
+  }
+
+  /** The unified AI decision engine — identical to the Analysis page path. */
+  private predictionFor(snapshot: AnalysisSnapshot): Prediction | null {
+    if (snapshot.digits.length < 20) return null;
+    const prediction = buildPrediction(snapshot, this.calibration);
+    prediction.strategyAgreement = Math.round(
+      strategyAgreement(snapshot, prediction.targetDigit) * 100,
+    );
+    return prediction;
+  }
+
+  private publishMarkets() {
+    const order = this.scanSymbols();
+    this.markets = order
+      .map((symbol) =>
+        symbol === this.symbol
+          ? this.toMarketState(symbol, this.snapshot, this.buffer.length, this.diagnostics.lastTickAt)
+          : this.scanStates.get(symbol) ?? null,
+      )
+      .filter((state): state is MarketState => Boolean(state));
+    this.marketsUpdatedAt = Date.now();
+  }
+
+
 
   /** Plain `ticks` subscription — used when `ticks_history` is unavailable. */
   private startFallbackFeed() {
@@ -619,15 +755,37 @@ class MarketEngineImpl {
     }
 
     if (type === "history") {
-      if (this.historyTimer) clearTimeout(this.historyTimer);
+      const echo = data["echo_req"] as Record<string, unknown> | undefined;
+      const echoSymbol = echo ? String(echo["ticks_history"] ?? "") : "";
       const history = data["history"] as { prices?: number[]; times?: number[] } | undefined;
       const prices = history?.prices ?? [];
       const times = history?.times ?? [];
+
+      // Shared-scan market (not the active symbol) — feed its rolling buffer.
+      if (echoSymbol && echoSymbol !== this.symbol) {
+        const pip = this.pipFor(echoSymbol);
+        this.ingestScanTicks(
+          echoSymbol,
+          prices.map((quote, i) => ({
+            epoch: times[i] ?? Date.now() / 1000,
+            quote,
+            digit: extractDigit(quote, pip),
+            pipSize: pip,
+            receivedAt: Date.now(),
+          })),
+          true,
+        );
+        this.emit();
+        return;
+      }
+
+      if (this.historyTimer) clearTimeout(this.historyTimer);
 
       if (!prices.length) {
         if (!this.polling) this.startFallbackFeed();
         return;
       }
+
 
       this.pipSize = this.pipFor(this.symbol);
       const incoming = prices.map((quote, i) => ({
@@ -679,7 +837,28 @@ class MarketEngineImpl {
     if (type === "tick") {
       const t = data["tick"] as Record<string, unknown> | undefined;
       if (!t || typeof t["quote"] !== "number") return;
-      if (t["symbol"] && t["symbol"] !== this.symbol) return;
+      const tickSymbol = t["symbol"] ? String(t["symbol"]) : this.symbol;
+      if (tickSymbol !== this.symbol) {
+        // Shared-scan market — same pipeline, separate rolling buffer.
+        const pip =
+          typeof t["pip_size"] === "number" ? (t["pip_size"] as number) : this.pipFor(tickSymbol);
+        this.ingestScanTicks(
+          tickSymbol,
+          [
+            {
+              epoch: Number(t["epoch"] ?? Date.now() / 1000),
+              quote: t["quote"] as number,
+              digit: extractDigit(t["quote"] as number, pip),
+              pipSize: pip,
+              receivedAt: Date.now(),
+            },
+          ],
+          false,
+        );
+        this.emit();
+        return;
+      }
+
 
       if (this.historyTimer) clearTimeout(this.historyTimer);
 
@@ -719,13 +898,15 @@ class MarketEngineImpl {
 
   /* -------------------------------------------------------------- analysis */
 
-  private recompute(incoming?: Tick) {
-    const ticks = this.buffer.slice(-this.window);
+  /**
+   * THE analysis pipeline. Every consumer — Analysis page, Manual Trade and
+   * the Bot's shared market state — is derived from this one function.
+   */
+  private buildSnapshot(symbol: string, ticks: Tick[], processed: number): AnalysisSnapshot {
     const digits = ticks.map((t) => t.digit);
     const stats = computeDigitStats(digits);
     const transition = computeTransitionMatrix(digits);
-    const rate = this.diagnostics.tickRate;
-    const live = computeLiveStatistics(ticks, stats, this.processed, rate);
+    const live = computeLiveStatistics(ticks, stats, processed, this.diagnostics.tickRate);
     const strategies = runStrategies({
       digits,
       stats,
@@ -744,8 +925,8 @@ class MarketEngineImpl {
     const topAgreement = Math.max(0, ...Object.values(consensus)) / (strategies.length || 1);
     const quality = computeMarketQuality(digits, stats, live, this.window, topAgreement);
 
-    this.snapshot = {
-      symbol: this.symbol,
+    return {
+      symbol,
       window: this.window,
       digits,
       stats,
@@ -755,13 +936,19 @@ class MarketEngineImpl {
       transition,
       updatedAt: Date.now(),
     };
+  }
+
+  private recompute(incoming?: Tick) {
+    this.snapshot = this.buildSnapshot(this.symbol, this.buffer.slice(-this.window), this.processed);
 
     if (incoming) {
-      this.calibration.observe(strategies, incoming.digit);
+      this.calibration.observe(this.snapshot.strategies, incoming.digit);
       this.evaluateEntry(incoming);
     }
 
+    this.publishMarkets();
     this.emit();
+
   }
 
   private evaluateEntry(tick: Tick) {
