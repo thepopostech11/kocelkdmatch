@@ -837,7 +837,28 @@ class MarketEngineImpl {
     if (type === "tick") {
       const t = data["tick"] as Record<string, unknown> | undefined;
       if (!t || typeof t["quote"] !== "number") return;
-      if (t["symbol"] && t["symbol"] !== this.symbol) return;
+      const tickSymbol = t["symbol"] ? String(t["symbol"]) : this.symbol;
+      if (tickSymbol !== this.symbol) {
+        // Shared-scan market — same pipeline, separate rolling buffer.
+        const pip =
+          typeof t["pip_size"] === "number" ? (t["pip_size"] as number) : this.pipFor(tickSymbol);
+        this.ingestScanTicks(
+          tickSymbol,
+          [
+            {
+              epoch: Number(t["epoch"] ?? Date.now() / 1000),
+              quote: t["quote"] as number,
+              digit: extractDigit(t["quote"] as number, pip),
+              pipSize: pip,
+              receivedAt: Date.now(),
+            },
+          ],
+          false,
+        );
+        this.emit();
+        return;
+      }
+
 
       if (this.historyTimer) clearTimeout(this.historyTimer);
 
