@@ -855,13 +855,15 @@ class MarketEngineImpl {
 
   /* -------------------------------------------------------------- analysis */
 
-  private recompute(incoming?: Tick) {
-    const ticks = this.buffer.slice(-this.window);
+  /**
+   * THE analysis pipeline. Every consumer — Analysis page, Manual Trade and
+   * the Bot's shared market state — is derived from this one function.
+   */
+  private buildSnapshot(symbol: string, ticks: Tick[], processed: number): AnalysisSnapshot {
     const digits = ticks.map((t) => t.digit);
     const stats = computeDigitStats(digits);
     const transition = computeTransitionMatrix(digits);
-    const rate = this.diagnostics.tickRate;
-    const live = computeLiveStatistics(ticks, stats, this.processed, rate);
+    const live = computeLiveStatistics(ticks, stats, processed, this.diagnostics.tickRate);
     const strategies = runStrategies({
       digits,
       stats,
@@ -880,8 +882,8 @@ class MarketEngineImpl {
     const topAgreement = Math.max(0, ...Object.values(consensus)) / (strategies.length || 1);
     const quality = computeMarketQuality(digits, stats, live, this.window, topAgreement);
 
-    this.snapshot = {
-      symbol: this.symbol,
+    return {
+      symbol,
       window: this.window,
       digits,
       stats,
@@ -891,13 +893,19 @@ class MarketEngineImpl {
       transition,
       updatedAt: Date.now(),
     };
+  }
+
+  private recompute(incoming?: Tick) {
+    this.snapshot = this.buildSnapshot(this.symbol, this.buffer.slice(-this.window), this.processed);
 
     if (incoming) {
-      this.calibration.observe(strategies, incoming.digit);
+      this.calibration.observe(this.snapshot.strategies, incoming.digit);
       this.evaluateEntry(incoming);
     }
 
+    this.publishMarkets();
     this.emit();
+
   }
 
   private evaluateEntry(tick: Tick) {
