@@ -29,7 +29,7 @@ export type MarketOpportunity = {
 export class MultiSymbolScanner {
   private unsubscribe: (() => void) | null = null;
   private listeners = new Set<Listener>();
-  private minimumConfidence = 90;
+  private minimumConfidence = 1;
   private selectedSymbol: string | null = null;
   subscribed = false;
   version = 0;

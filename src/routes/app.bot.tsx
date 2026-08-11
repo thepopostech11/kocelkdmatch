@@ -140,7 +140,15 @@ function BotPage() {
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {markets.length ? (
-            markets.map((item, index) => <ScannerCard key={item.symbol} index={index + 1} item={item} />)
+            markets.map((item, index) => (
+              <ScannerCard
+                key={item.symbol}
+                index={index + 1}
+                item={item}
+                botStatus={engine.status}
+                lockedSymbol={selected?.symbol ?? null}
+              />
+            ))
           ) : (
             <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
               Waiting for the shared Analysis Engine to publish live markets…
@@ -268,7 +276,17 @@ function statusLabel(status: MarketOpportunity["status"]) {
   }
 }
 
-function ScannerCard({ index, item }: { index: number; item: MarketOpportunity }) {
+function ScannerCard({
+  index,
+  item,
+  botStatus,
+  lockedSymbol,
+}: {
+  index: number;
+  item: MarketOpportunity;
+  botStatus: ReturnType<typeof useBotEngine>["status"];
+  lockedSymbol: string | null;
+}) {
   const tone =
     item.status === "best" || item.status === "selected"
       ? "border-primary/60 bg-primary/5"
@@ -303,7 +321,9 @@ function ScannerCard({ index, item }: { index: number; item: MarketOpportunity }
         <Row label="Buffer" value={`${item.bufferSize}`} />
         <Row label="Last tick" value={item.lastTickAt ? new Date(item.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
       </div>
-        <p className={`mt-2 text-[11px] font-bold uppercase ${statusTone}`}>{statusLabel(item.status)}</p>
+        <p className={`mt-2 text-[11px] font-bold uppercase ${statusTone}`}>
+          {lockedSymbol === item.symbol ? lockedStatusLabel(botStatus, item) : statusLabel(item.status)}
+        </p>
         {item.prediction && !item.qualified && (
           <p className="mt-1 text-[10px] text-muted-foreground">
             Reason: {item.eligibility?.checks.find((check) => check.critical && !check.passed)?.label ?? "Analysis signal invalid"}
@@ -311,6 +331,28 @@ function ScannerCard({ index, item }: { index: number; item: MarketOpportunity }
         )}
     </article>
   );
+}
+
+function lockedStatusLabel(
+  status: ReturnType<typeof useBotEngine>["status"],
+  item: MarketOpportunity,
+) {
+  switch (status) {
+    case "locked":
+      return "OPPORTUNITY LOCKED";
+    case "waiting":
+      return `WAITING FOR ${item.prediction?.entryTrigger ?? "TRIGGER"}`;
+    case "requesting-proposal":
+      return "REQUESTING PROPOSAL";
+    case "buying":
+      return "BUYING";
+    case "trade-open":
+      return "TRADE ACTIVE";
+    case "result-processing":
+      return "RESULT PROCESSING";
+    default:
+      return statusLabel(item.status);
+  }
 }
 
 function Row({ label, value }: { label: string; value: string }) {
