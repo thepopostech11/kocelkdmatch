@@ -8,6 +8,7 @@ import { useBotEngine, useScannerMarkets } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
 import type { MarketOpportunity } from "@/bot/MultiSymbolScanner";
+import type { BotStatus } from "@/bot/BotEngine";
 
 
 export const Route = createFileRoute("/app/bot")({
@@ -284,7 +285,7 @@ function ScannerCard({
 }: {
   index: number;
   item: MarketOpportunity;
-  botStatus: ReturnType<typeof useBotEngine>["status"];
+  botStatus: BotStatus;
   lockedSymbol: string | null;
 }) {
   const tone =
@@ -334,7 +335,7 @@ function ScannerCard({
 }
 
 function lockedStatusLabel(
-  status: ReturnType<typeof useBotEngine>["status"],
+  status: BotStatus,
   item: MarketOpportunity,
 ) {
   switch (status) {
