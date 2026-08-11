@@ -121,13 +121,18 @@ class BotEngineImpl {
       }
       const tick = liveMarket.snapshot.live;
       const epoch = liveMarket.snapshot.updatedAt;
+      const lockedPrediction = this.locked.prediction;
+      if (!lockedPrediction) {
+        this.releaseOpportunity("Locked Analysis prediction is unavailable — returning to scanning");
+        return;
+      }
       if (epoch === this.lastObservedEpoch) return;
       this.lastObservedEpoch = epoch;
       this.lockedTicksObserved += 1;
-      if (tick.currentDigit === this.locked.prediction?.entryTrigger) {
+      if (tick.currentDigit === lockedPrediction.entryTrigger) {
         useBotStore.getState().addActivity(`Live digit ${tick.currentDigit} detected`);
         void this.execute(this.locked);
-      } else if (this.lockedTicksObserved >= this.locked.prediction!.lifetimeTicks) {
+      } else if (this.lockedTicksObserved >= lockedPrediction.lifetimeTicks) {
         this.releaseOpportunity("Entry trigger window expired — returning to opportunity scan");
         return;
       } else {
