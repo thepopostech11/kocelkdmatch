@@ -178,6 +178,13 @@ function BotPage() {
           <Metric label="Latest analysis" value={sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"} />
           <Metric label="Confidence source" value="Analysis Engine" />
           <Metric label="Active threshold" value={`${sync.threshold}%`} />
+          <Metric label="Qualified markets" value={String(qualifiedMarkets)} />
+          <Metric label="Opportunity ID" value={sync.opportunityId ?? "—"} />
+          <Metric label="Selected symbol" value={sync.selectedSymbol ?? "—"} />
+          <Metric label="Selected confidence" value={sync.selectedConfidence == null ? "—" : `${sync.selectedConfidence}%`} />
+          <Metric label="Target / Trigger" value={prediction ? `${prediction.targetDigit} / ${prediction.entryTrigger}` : "—"} />
+          <Metric label="Duration" value={prediction ? `${prediction.suggestedDuration} ticks` : "—"} />
+          <Metric label="Execution" value={sync.execution.replaceAll("-", " ").toUpperCase()} />
         </div>
         {sync.analysisMarkets > 0 && sync.botMarkets === 0 && (
           <p className="mt-3 text-xs text-destructive">
@@ -296,7 +303,12 @@ function ScannerCard({ index, item }: { index: number; item: MarketOpportunity }
         <Row label="Buffer" value={`${item.bufferSize}`} />
         <Row label="Last tick" value={item.lastTickAt ? new Date(item.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
       </div>
-      <p className={`mt-2 text-[11px] font-bold uppercase ${statusTone}`}>{statusLabel(item.status)}</p>
+        <p className={`mt-2 text-[11px] font-bold uppercase ${statusTone}`}>{statusLabel(item.status)}</p>
+        {item.prediction && !item.qualified && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Reason: {item.eligibility?.checks.find((check) => check.critical && !check.passed)?.label ?? "Analysis signal invalid"}
+          </p>
+        )}
     </article>
   );
 }

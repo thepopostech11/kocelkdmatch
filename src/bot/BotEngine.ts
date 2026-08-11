@@ -10,8 +10,10 @@ export type BotStatus =
   | "warming"
   | "locked"
   | "waiting"
-  | "submitting"
+  | "requesting-proposal"
+  | "buying"
   | "trade-open"
+  | "result-processing"
   | "error";
 
 type Listener = () => void;
@@ -20,6 +22,7 @@ class BotEngineImpl {
   readonly scanner = new MultiSymbolScanner();
   status: BotStatus = "stopped";
   locked: MarketOpportunity | null = null;
+  opportunityId: string | null = null;
   lastTrade: OpenTrade | null = null;
   error: string | null = null;
   version = 0;
@@ -31,6 +34,9 @@ class BotEngineImpl {
   private submitting = false;
   private lastObservedEpoch = 0;
   private lastKnownMarketCount = 0;
+  private opportunitySequence = 0;
+  private lockedTicksObserved = 0;
+  private botContractIds = new Set<string>();
 
   constructor() {
     this.tradeUnsubscribe = TradingEngine.onEvent((event) => this.handleTradeEvent(event));
@@ -53,7 +59,9 @@ class BotEngineImpl {
     this.status = "scanning";
     this.error = null;
     this.locked = null;
+    this.opportunityId = null;
     this.lastObservedEpoch = 0;
+    this.lockedTicksObserved = 0;
     useBotStore.getState().resetSession();
     if (markets.length > 0) {
       useBotStore.getState().addActivity(`Scanning ${markets.length} shared analysis markets`);
@@ -73,6 +81,7 @@ class BotEngineImpl {
     this.running = false;
     this.submitting = false;
     this.locked = null;
+    this.opportunityId = null;
     this.status = "stopped";
     this.scanner.select(null);
     this.scanner.stop();
@@ -105,22 +114,25 @@ class BotEngineImpl {
     this.updateScanStats(opportunities);
 
     if (this.locked) {
-      const refreshed = opportunities.find((item) => item.symbol === this.locked?.symbol) ?? null;
-      if (!refreshed?.qualified || !refreshed.prediction || !refreshed.live) {
-        useBotStore.getState().addActivity("Signal invalidated — releasing market lock");
-        this.locked = null;
-        this.scanner.select(null);
-        this.status = "scanning";
-        this.emit();
+      const liveMarket = opportunities.find((item) => item.symbol === this.locked?.symbol) ?? null;
+      if (!liveMarket?.qualified || !liveMarket.prediction || !liveMarket.live) {
+        this.releaseOpportunity("Signal invalidated by the latest shared Analysis state");
         return;
       }
-      this.locked = refreshed;
-      const tick = refreshed.snapshot.live;
-      const epoch = refreshed.snapshot.updatedAt;
+      const tick = liveMarket.snapshot.live;
+      const epoch = liveMarket.snapshot.updatedAt;
       if (epoch === this.lastObservedEpoch) return;
       this.lastObservedEpoch = epoch;
-      if (tick.currentDigit === refreshed.prediction.entryTrigger) void this.execute(refreshed);
-      else this.status = "waiting";
+      this.lockedTicksObserved += 1;
+      if (tick.currentDigit === this.locked.prediction?.entryTrigger) {
+        useBotStore.getState().addActivity(`Live digit ${tick.currentDigit} detected`);
+        void this.execute(this.locked);
+      } else if (this.lockedTicksObserved >= this.locked.prediction!.lifetimeTicks) {
+        this.releaseOpportunity("Entry trigger window expired — returning to opportunity scan");
+        return;
+      } else {
+        this.status = "waiting";
+      }
       this.emit();
       return;
     }
@@ -133,12 +145,27 @@ class BotEngineImpl {
     }
 
     this.locked = strongest;
+    this.opportunitySequence += 1;
+    this.opportunityId = this.createOpportunityId(this.opportunitySequence);
+    this.lockedTicksObserved = 0;
+    this.lastObservedEpoch = strongest.snapshot.updatedAt;
     this.scanner.select(strongest.symbol);
     this.status = "locked";
-    useBotStore
-      .getState()
-      .addActivity(`${strongest.displayName} selected at ${strongest.prediction?.confidence ?? 0}% confidence`);
+    const prediction = strongest.prediction;
+    const activity = useBotStore.getState();
+    activity.addActivity(`${strongest.displayName} qualifies at ${prediction?.confidence ?? 0}% confidence`);
+    activity.addActivity(`Opportunity ${this.opportunityId} locked`);
+    if (prediction) {
+      activity.addActivity(
+        `Target ${prediction.targetDigit} · trigger ${prediction.entryTrigger} · duration ${prediction.suggestedDuration} ticks`,
+      );
+      activity.addActivity(`Waiting for real live trigger ${prediction.entryTrigger}`);
+    }
     this.emit();
+    if (prediction && strongest.snapshot.live.currentDigit === prediction.entryTrigger) {
+      activity.addActivity(`Live digit ${prediction.entryTrigger} already matches the locked trigger`);
+      void this.execute(strongest);
+    }
   }
 
   private async execute(opportunity: MarketOpportunity) {
@@ -152,13 +179,10 @@ class BotEngineImpl {
       || freshPrediction.targetDigit !== prediction.targetDigit
       || freshPrediction.entryTrigger !== prediction.entryTrigger
       || freshPrediction.suggestedDuration !== prediction.suggestedDuration
+      || fresh.snapshot.live.currentDigit !== prediction.entryTrigger
       || Date.now() - fresh.snapshot.updatedAt > 15_000;
     if (stale) {
-      useBotStore.getState().addActivity("Signal invalidated at final check — returning to scanning");
-      this.locked = null;
-      this.scanner.select(null);
-      this.status = "scanning";
-      this.emit();
+      this.releaseOpportunity("Final shared Analysis validation failed — returning to scanning");
       return;
     }
 
@@ -181,22 +205,12 @@ class BotEngineImpl {
     }
 
     this.submitting = true;
-    this.status = "submitting";
-    useBotStore.getState().addActivity(`Trigger ${prediction.entryTrigger} detected — validating live quote`);
+    this.status = "requesting-proposal";
+    useBotStore.getState().addActivity("Final shared Analysis validation passed");
+    useBotStore.getState().addActivity("Requesting real MATCH proposal");
     this.emit();
     try {
-      const quote = await TradingEngine.quote({
-        symbol: opportunity.symbol,
-        digit: prediction.targetDigit,
-        stake,
-        ticks: prediction.suggestedDuration,
-        currency: account.currency,
-      });
-      if (!quote.id || quote.askPrice <= 0 || quote.askPrice > stake) {
-        throw new Error("Deriv did not return an acceptable live proposal.");
-      }
-      if (!this.running) return;
-      const trade = await TradingEngine.buy({
+      const params = {
         symbol: opportunity.symbol,
         digit: prediction.targetDigit,
         stake,
@@ -204,16 +218,34 @@ class BotEngineImpl {
         currency: account.currency,
         availableSymbols: MarketEngine.symbols,
         balance: account.availableBalance,
-      });
+      };
+      const quote = await this.withTimeout(
+        TradingEngine.quote(params),
+        15_000,
+        "Deriv proposal request timed out. No Buy was submitted.",
+      );
+      if (!quote.id || quote.askPrice <= 0 || quote.askPrice > stake) {
+        throw new Error("Deriv did not return an acceptable live proposal.");
+      }
+      if (!this.running) return;
+      useBotStore.getState().addActivity(`Proposal ${quote.id} received at ${quote.askPrice.toFixed(2)} ${account.currency}`);
+      this.status = "buying";
+      useBotStore.getState().addActivity(`Buying DIGITMATCH ${prediction.targetDigit}`);
+      this.emit();
+      // Buy the exact proposal already validated above. Never request a second
+      // proposal with potentially different pricing or parameters.
+      const trade = await TradingEngine.buyFromProposal(params, quote);
       this.lastTrade = trade;
+      this.botContractIds.add(trade.contractId);
       this.status = "trade-open";
-      useBotStore.getState().addActivity(`Real trade ${trade.contractId} opened`);
+      const store = useBotStore.getState();
+      store.setStats({ ...store.stats, realTradesExecuted: store.stats.realTradesExecuted + 1 });
+      store.addActivity(`Trade executed · contract ${trade.contractId} · transaction ${trade.transactionId}`);
+      store.addActivity(`Contract active · buy ${trade.buyPrice.toFixed(2)} · payout ${trade.payout.toFixed(2)} ${trade.currency}`);
     } catch (error) {
       this.error = error instanceof Error ? error.message : "Order submission failed";
       useBotStore.getState().addActivity(`Order rejected: ${this.error}`);
-      this.locked = null;
-      this.scanner.select(null);
-      this.status = "scanning";
+      this.releaseOpportunity("Execution lock released — refreshing shared Analysis");
     } finally {
       this.submitting = false;
       this.emit();
@@ -221,12 +253,13 @@ class BotEngineImpl {
   }
 
   private handleTradeEvent(event: TradeEvent) {
-    if (event.kind !== "settled") return;
+    if (event.kind !== "settled" || !this.botContractIds.has(event.trade.contractId)) return;
+    this.botContractIds.delete(event.trade.contractId);
+    this.status = "result-processing";
     this.lastTrade = event.trade;
     useTradeStore.getState().record(event.trade);
     const store = useBotStore.getState();
     const stats = { ...store.stats };
-    stats.realTradesExecuted += 1;
     stats.totalPnl += event.trade.profit;
     stats.confidenceTotal += this.locked?.prediction?.confidence ?? 0;
     stats.agreementTotal += this.locked?.prediction?.strategyAgreement ?? 0;
@@ -237,6 +270,7 @@ class BotEngineImpl {
       `Contract ${event.trade.contractId} finished — ${event.trade.status} ${event.trade.profit >= 0 ? "+" : ""}${event.trade.profit.toFixed(2)} ${event.trade.currency}`,
     );
     this.locked = null;
+    this.opportunityId = null;
     this.scanner.select(null);
     this.status = this.running ? "scanning" : "stopped";
     this.emit();
@@ -254,7 +288,42 @@ class BotEngineImpl {
       lastTickAt: MarketEngine.diagnostics.lastTickAt,
       threshold: this.scanner.threshold,
       running: this.running,
+      opportunityId: this.opportunityId,
+      selectedSymbol: this.locked?.symbol ?? null,
+      selectedConfidence: this.locked?.confidence ?? null,
+      execution: this.status,
     };
+  }
+
+  private releaseOpportunity(reason: string) {
+    useBotStore.getState().addActivity(reason);
+    this.locked = null;
+    this.opportunityId = null;
+    this.lockedTicksObserved = 0;
+    this.lastObservedEpoch = 0;
+    this.scanner.select(null);
+    this.status = this.running ? "scanning" : "stopped";
+    this.emit();
+  }
+
+  private createOpportunityId(sequence: number) {
+    const date = new Date();
+    const day = `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}${String(date.getUTCDate()).padStart(2, "0")}`;
+    return `BOT-${day}-${String(sequence).padStart(4, "0")}`;
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(message)), milliseconds);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private updateScanStats(opportunities: MarketOpportunity[]) {
