@@ -254,6 +254,7 @@ class BotEngineImpl {
     } finally {
       this.submitting = false;
       this.emit();
+      if (this.running && this.status === "scanning") this.evaluate();
     }
   }
 
