@@ -29,7 +29,7 @@ export type MarketOpportunity = {
 export class MultiSymbolScanner {
   private unsubscribe: (() => void) | null = null;
   private listeners = new Set<Listener>();
-  private minimumConfidence = 90;
+  private minimumConfidence = 1;
   private selectedSymbol: string | null = null;
   subscribed = false;
   version = 0;
@@ -107,14 +107,9 @@ export class MultiSymbolScanner {
       : null;
     // Confidence is taken verbatim from the Analysis Engine — never adjusted.
     const confidence = prediction?.confidence ?? 0;
-    const opportunityScore = prediction
-      ? Math.round(
-          prediction.confidence * 0.35 +
-            prediction.strategyAgreement * 0.25 +
-            prediction.predictionHealth * 0.2 +
-            snapshot.quality.overall * 0.2,
-        )
-      : 0;
+    // This is the Analysis Engine's own opportunity output. The Bot does not
+    // manufacture a competing score or confidence system.
+    const opportunityScore = prediction?.entryOpportunity ?? 0;
     const qualified = Boolean(
       prediction && confidence >= this.minimumConfidence && eligibility?.eligible,
     );
