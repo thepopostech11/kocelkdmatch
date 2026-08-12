@@ -76,6 +76,15 @@ export function buildPrediction(
   const supporting = ranked.slice(1, 5).map((r) => r.s.name);
 
   const reasoning: string[] = [];
+  reasoning.push(
+    `Highest occurring digit ${strategy.targetDigit} at ${strategy.highestDigitFrequency.toFixed(1)}% — MATCH target.`,
+  );
+  reasoning.push(
+    attempt >= 2
+      ? `Recovery entry trigger ${strategy.recoveryEntryDigit} (second highest at ${strategy.secondHighestDigitFrequency.toFixed(1)}%) — target stays ${strategy.targetDigit}.`
+      : `First entry trigger ${strategy.firstEntryDigit} (lowest at ${strategy.lowestDigitFrequency.toFixed(1)}%) — MATCH ${strategy.targetDigit} for ${strategy.recommendedDuration} ticks.`,
+  );
+  for (const reason of strategy.rejectionReasons) reasoning.push(reason);
   if (stat.currentGap > stat.averageGap)
     reasoning.push(
       `Digit ${target} is ${stat.currentGap} ticks into a gap versus an ${stat.averageGap.toFixed(1)} tick average.`,
