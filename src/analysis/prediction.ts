@@ -131,5 +131,6 @@ export function buildPrediction(
     strategyAgreement: Math.round(agreement * 100),
     stability: Math.round(snapshot.quality.signalStability),
     bufferSizeAtRun: snapshot.live.bufferSize,
+    strategy,
   };
 }
