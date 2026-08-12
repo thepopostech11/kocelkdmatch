@@ -3,6 +3,7 @@
  * recommendation package (target digit, entry trigger, duration, reasoning).
  */
 import { DIGITS } from "./statistics";
+import { evaluateStrategy, getStrategySettings } from "./strategy";
 import type { ModelCalibrationEngine } from "./calibration";
 import type { AnalysisSnapshot, Prediction } from "./types";
 
