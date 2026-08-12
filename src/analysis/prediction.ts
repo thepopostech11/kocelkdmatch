@@ -28,22 +28,6 @@ export function strategyAgreement(snapshot: AnalysisSnapshot, target: number): n
   return agree / snapshot.strategies.length;
 }
 
-/**
- * Entry trigger — the digit whose appearance historically precedes the target
- * most strongly. Derived from the transition matrix column of the target,
- * tempered by how often that trigger actually shows up.
- */
-function deriveEntryTrigger(snapshot: AnalysisSnapshot, target: number) {
-  const scored = DIGITS.map((d) => {
-    const probability = snapshot.transition[d]?.[target] ?? 0.1;
-    const availability = (snapshot.stats[d]?.percentage ?? 10) / 100;
-    const freshness = 1 / (1 + (snapshot.stats[d]?.currentGap ?? 0) / 25);
-    return { digit: d, score: probability * 0.65 + availability * 0.2 + freshness * 0.15, probability };
-  }).sort((a, b) => b.score - a.score);
-
-  const top = scored[0]!;
-  return { digit: top.digit, probability: top.probability, score: top.score };
-}
 
 export function buildPrediction(
   snapshot: AnalysisSnapshot,
