@@ -47,34 +47,24 @@ function deriveEntryTrigger(snapshot: AnalysisSnapshot, target: number) {
 export function buildPrediction(
   snapshot: AnalysisSnapshot,
   calibration: ModelCalibrationEngine,
+  attempt = 1,
 ): Prediction {
-  const fused = fuseScores(snapshot, calibration);
-  const ordered = DIGITS.map((d) => ({ digit: d, score: fused[d]! })).sort((a, b) => b.score - a.score);
-  const target = ordered[0]!.digit;
-  const margin = ordered[0]!.score - (ordered[1]?.score ?? 0);
+  // The new Strategy Engine is the single source of strategy truth.
+  const strategy = evaluateStrategy(snapshot, getStrategySettings(), attempt);
+  const target = strategy.targetDigit;
+  const entryDigit = attempt >= 2 ? strategy.recoveryEntryDigit : strategy.firstEntryDigit;
 
   const agreement = strategyAgreement(snapshot, target);
-  const trigger = deriveEntryTrigger(snapshot, target);
+  const trigger = {
+    digit: entryDigit,
+    probability: snapshot.transition[entryDigit]?.[target] ?? 0.1,
+  };
   const stat = snapshot.stats[target]!;
 
-  const suggestedDuration = Math.max(
-    1,
-    Math.min(10, Math.round(stat.averageGap > 0 ? Math.min(stat.averageGap, 9) : 3)),
-  );
-  const observationWindow = Math.max(suggestedDuration * 2, Math.round(stat.averageGap * 2) || 8);
+  const suggestedDuration = strategy.recommendedDuration;
+  const observationWindow = Math.max(suggestedDuration, strategy.attempt ? getStrategySettings().signalExpirationTicks : 30);
 
-  const confidence = Math.round(
-    Math.max(
-      5,
-      Math.min(
-        99,
-        margin * 190 +
-          agreement * 45 +
-          snapshot.quality.predictionReliability * 0.28 -
-          snapshot.quality.noise * 0.1,
-      ),
-    ),
-  );
+  const confidence = strategy.confidence;
 
   const entryOpportunity = Math.round(
     Math.max(0, Math.min(100, trigger.probability * 220 + snapshot.quality.gapStability * 0.3)),
