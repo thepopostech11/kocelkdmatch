@@ -97,4 +97,6 @@ export type Prediction = {
   strategyAgreement: number;
   stability: number;
   bufferSizeAtRun: number;
+  /** Structured output of the KOCEL DMATCH Strategy Engine. */
+  strategy?: import("./strategy").StrategyDecision;
 };
