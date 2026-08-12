@@ -33,6 +33,18 @@ export type Settings = {
   // Security
   sessionTimeout: number;
   reconnectAutomatically: boolean;
+  // Strategy engine
+  strategyMinHighestFrequency: number;
+  strategyDuration: number;
+  strategyMaxRecoveryAttempts: number;
+  strategySignalExpirationTicks: number;
+  strategyMinSignalStability: number;
+  // Bot risk controls
+  maxBotTrades: number;
+  botLossLimit: number;
+  // Manual trade risk controls
+  manualLossLimit: number;
+  maxDailyManualTrades: number;
 };
 
 const DEFAULTS: Settings = {
