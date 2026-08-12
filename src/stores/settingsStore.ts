@@ -73,6 +73,15 @@ const DEFAULTS: Settings = {
   liveDiagnostics: false,
   sessionTimeout: 60,
   reconnectAutomatically: true,
+  strategyMinHighestFrequency: 12,
+  strategyDuration: 3,
+  strategyMaxRecoveryAttempts: 1,
+  strategySignalExpirationTicks: 30,
+  strategyMinSignalStability: 0,
+  maxBotTrades: 20,
+  botLossLimit: 10,
+  manualLossLimit: 5,
+  maxDailyManualTrades: 50,
 };
 
 type SettingsState = Settings & {
