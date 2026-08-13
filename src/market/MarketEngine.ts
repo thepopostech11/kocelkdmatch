@@ -431,7 +431,7 @@ class MarketEngineImpl {
   /** Runs the shared analysis pipeline for one scanned symbol. */
   private recomputeMarket(symbol: string) {
     const buffer = this.scanBuffers.get(symbol) ?? [];
-    const snapshot = this.buildSnapshot(symbol, buffer.slice(-this.window), buffer.length);
+    const snapshot = this.buildSnapshot(symbol, buffer.slice(-this.window), buffer.length, buffer.slice(-500));
     this.scanStates.set(symbol, this.toMarketState(symbol, snapshot, buffer.length, this.scanLastTickAt.get(symbol) ?? null));
     this.publishMarkets();
   }
@@ -902,8 +902,14 @@ class MarketEngineImpl {
    * THE analysis pipeline. Every consumer — Analysis page, Manual Trade and
    * the Bot's shared market state — is derived from this one function.
    */
-  private buildSnapshot(symbol: string, ticks: Tick[], processed: number): AnalysisSnapshot {
+  private buildSnapshot(
+    symbol: string,
+    ticks: Tick[],
+    processed: number,
+    historyTicks: Tick[] = ticks,
+  ): AnalysisSnapshot {
     const digits = ticks.map((t) => t.digit);
+    const history = historyTicks.map((t) => t.digit);
     const stats = computeDigitStats(digits);
     const transition = computeTransitionMatrix(digits);
     const live = computeLiveStatistics(ticks, stats, processed, this.diagnostics.tickRate);
@@ -929,6 +935,7 @@ class MarketEngineImpl {
       symbol,
       window: this.window,
       digits,
+      history,
       stats,
       live,
       quality,
@@ -939,7 +946,12 @@ class MarketEngineImpl {
   }
 
   private recompute(incoming?: Tick) {
-    this.snapshot = this.buildSnapshot(this.symbol, this.buffer.slice(-this.window), this.processed);
+    this.snapshot = this.buildSnapshot(
+      this.symbol,
+      this.buffer.slice(-this.window),
+      this.processed,
+      this.buffer.slice(-500),
+    );
 
     if (incoming) {
       this.calibration.observe(this.snapshot.strategies, incoming.digit);
