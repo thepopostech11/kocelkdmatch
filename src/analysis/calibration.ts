@@ -98,7 +98,7 @@ export class ModelCalibrationEngine {
   }
 
   matchCalibration() {
-    return { buckets: { ...this.matchBuckets }, samples: this.matchSamples };
+    return { buckets: { ...this.matchBuckets }, samples: this.matchSamples, last: this.lastMatchMeta };
   }
 
   private bucketFor(confidence: number) {
