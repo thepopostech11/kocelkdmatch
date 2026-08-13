@@ -314,8 +314,36 @@ class BotEngineImpl {
     store.addActivity(
       `Contract ${event.trade.contractId} finished — ${event.trade.status} ${event.trade.profit >= 0 ? "+" : ""}${event.trade.profit.toFixed(2)} ${event.trade.currency}`,
     );
+
+    // ---- Strategy attempt accounting: max 2 attempts per opportunity ----
+    const settings = getStrategySettings();
+    const decision = this.locked?.prediction?.strategy ?? null;
+    const won = event.trade.profit > 0;
+    if (won) {
+      store.addActivity(
+        this.attempt >= 2
+          ? `ATTEMPT ${this.attempt} = WIN · OPPORTUNITY RECOVERED`
+          : "ATTEMPT 1 = WIN · OPPORTUNITY COMPLETE",
+      );
+      this.recoveryPlan = null;
+    } else if (this.attempt < 1 + Math.max(0, settings.maxRecoveryAttempts) && decision) {
+      store.addActivity("ATTEMPT 1 = LOSS · RECOVERY MODE");
+      this.recoveryPlan = {
+        symbol: event.trade.symbol,
+        target: decision.targetDigit,
+        entry: decision.recoveryEntryDigit,
+        duration: decision.recommendedDuration,
+      };
+      store.addActivity(`Waiting for second-highest digit ${decision.recoveryEntryDigit}`);
+    } else {
+      store.addActivity(`ATTEMPT ${this.attempt} = LOSS · STRATEGY SIGNAL FAILED`);
+      this.recoveryPlan = null;
+    }
+
     this.locked = null;
     this.opportunityId = null;
+    this.entryOverride = null;
+    this.attempt = 1;
     this.scanner.select(null);
     this.status = this.running ? "scanning" : "stopped";
     this.emit();
