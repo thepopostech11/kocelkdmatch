@@ -37,6 +37,11 @@ class BotEngineImpl {
   private opportunitySequence = 0;
   private lockedTicksObserved = 0;
   private botContractIds = new Set<string>();
+  /** Strategy attempt for the locked opportunity: 1 = first entry, 2 = recovery. */
+  private attempt = 1;
+  /** Recovery entry trigger override (second-highest digit) — target never changes. */
+  private entryOverride: number | null = null;
+  private recoveryPlan: { symbol: string; target: number; entry: number; duration: number } | null = null;
 
   constructor() {
     this.tradeUnsubscribe = TradingEngine.onEvent((event) => this.handleTradeEvent(event));
