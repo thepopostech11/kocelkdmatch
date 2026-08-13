@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useMarket";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useTradeStore } from "@/stores/tradeStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { TradingEngine } from "@/market/TradingEngine";
 import {
   TradeValidationError,
