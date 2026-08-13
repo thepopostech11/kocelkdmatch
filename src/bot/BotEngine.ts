@@ -219,11 +219,11 @@ class BotEngineImpl {
     // Final pre-trade check — re-read the live shared analysis snapshot.
     const fresh = this.scanner.opportunities.find((item) => item.symbol === opportunity.symbol);
     const freshPrediction = fresh?.prediction;
+    const triggerDigit = this.entryOverride ?? prediction.entryTrigger;
     const stale = !fresh?.qualified || !fresh.live || !freshPrediction
       || freshPrediction.targetDigit !== prediction.targetDigit
-      || freshPrediction.entryTrigger !== prediction.entryTrigger
       || freshPrediction.suggestedDuration !== prediction.suggestedDuration
-      || fresh.snapshot.live.currentDigit !== prediction.entryTrigger
+      || fresh.snapshot.live.currentDigit !== triggerDigit
       || Date.now() - fresh.snapshot.updatedAt > 15_000;
     if (stale) {
       this.releaseOpportunity("Final shared Analysis validation failed — returning to scanning");
