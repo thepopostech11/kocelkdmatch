@@ -126,20 +126,52 @@ class BotEngineImpl {
         this.releaseOpportunity("Locked Analysis prediction is unavailable — returning to scanning");
         return;
       }
+      // The target digit must never change while an opportunity is locked.
+      if (liveMarket.prediction.targetDigit !== lockedPrediction.targetDigit) {
+        this.releaseOpportunity("Target digit changed — signal cancelled");
+        return;
+      }
+      const triggerDigit = this.entryOverride ?? lockedPrediction.entryTrigger;
       if (epoch === this.lastObservedEpoch) return;
       this.lastObservedEpoch = epoch;
       this.lockedTicksObserved += 1;
-      if (tick.currentDigit === lockedPrediction.entryTrigger) {
+      if (tick.currentDigit === triggerDigit) {
         useBotStore.getState().addActivity(`Live digit ${tick.currentDigit} detected`);
         void this.execute(this.locked);
       } else if (this.lockedTicksObserved >= lockedPrediction.lifetimeTicks) {
-        this.releaseOpportunity("Entry trigger window expired — returning to opportunity scan");
+        this.releaseOpportunity("SIGNAL EXPIRED — returning to fresh analysis");
         return;
       } else {
         this.status = "waiting";
       }
       this.emit();
       return;
+    }
+
+    // Recovery attempt — same market, same target, second-highest digit entry.
+    if (this.recoveryPlan) {
+      const plan = this.recoveryPlan;
+      const market = opportunities.find((item) => item.symbol === plan.symbol);
+      if (!market?.prediction || !market.live || market.prediction.targetDigit !== plan.target) {
+        this.recoveryPlan = null;
+        useBotStore.getState().addActivity("Recovery signal invalidated — returning to fresh analysis");
+      } else {
+        this.locked = market;
+        this.attempt = 2;
+        this.entryOverride = plan.entry;
+        this.lockedTicksObserved = 0;
+        this.lastObservedEpoch = market.snapshot.updatedAt;
+        this.scanner.select(market.symbol);
+        this.status = "locked";
+        const activity = useBotStore.getState();
+        activity.addActivity(
+          `RECOVERY MODE · attempt 2 · MATCH ${plan.target} on trigger ${plan.entry} · ${plan.duration} ticks`,
+        );
+        this.recoveryPlan = null;
+        this.emit();
+        if (market.snapshot.live.currentDigit === plan.entry) void this.execute(market);
+        return;
+      }
     }
 
     const strongest = this.scanner.strongest;
@@ -150,6 +182,8 @@ class BotEngineImpl {
     }
 
     this.locked = strongest;
+    this.attempt = 1;
+    this.entryOverride = null;
     this.opportunitySequence += 1;
     this.opportunityId = this.createOpportunityId(this.opportunitySequence);
     this.lockedTicksObserved = 0;
