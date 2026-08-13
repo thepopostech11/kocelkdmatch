@@ -1,3 +1,5 @@
+import { getStrategySettings } from "@/analysis/strategy";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { MarketEngine } from "@/market/MarketEngine";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
 import { useBotStore } from "@/stores/botStore";
