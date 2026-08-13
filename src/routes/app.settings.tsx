@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useBotStore } from "@/stores/botStore";
+import { BotEngine } from "@/bot/BotEngine";
 import { APP_CONFIG, SYMBOLS, TICK_WINDOWS } from "@/config/app";
 import { MODULE_REGISTRY } from "@/services/moduleRegistry";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
@@ -281,7 +282,10 @@ function SettingsPage() {
                 max={99}
                 step={1}
                 value={[botMinimumConfidence]}
-                onValueChange={([v]) => setBotMinimumConfidence(v ?? 30)}
+                onValueChange={([v]) => {
+                  setBotMinimumConfidence(v ?? 30);
+                  BotEngine.setMinimumConfidence(v ?? 30);
+                }}
               />
             </Row>
           </Section>
