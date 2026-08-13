@@ -37,7 +37,7 @@ export function evaluateTradeEligibility(input: {
     { id: "confidence", label: "Confidence", passed: prediction.confidence >= input.minimumConfidence, critical: true },
     { id: "gap", label: "Gap Validation", passed: snapshot.stats[prediction.targetDigit]?.currentGap != null, critical: true },
     { id: "frequency", label: "Frequency Validation", passed: snapshot.stats[prediction.targetDigit]?.count != null, critical: true },
-    { id: "freshness", label: "Prediction Freshness", passed: age < 15_000, critical: true },
+    { id: "freshness", label: "Prediction Freshness", passed: age < 15_000 && prediction.strategy?.predictionValid !== false, critical: true },
     // These are Analysis Engine diagnostics, not hidden Bot trading gates.
     { id: "quality", label: "Market Quality", passed: snapshot.quality.overall >= 55, critical: false },
     { id: "agreement", label: "Strategy Agreement", passed: prediction.strategyAgreement >= 55, critical: false },

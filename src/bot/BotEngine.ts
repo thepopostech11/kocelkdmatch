@@ -321,6 +321,20 @@ class BotEngineImpl {
     const settings = getStrategySettings();
     const decision = this.locked?.prediction?.strategy ?? null;
     const won = event.trade.profit > 0;
+    // Feed the completed MATCH result back into the existing calibration engine.
+    if (decision) {
+      MarketEngine.calibration.recordMatchOutcome(decision.confidence, won, {
+        symbol: event.trade.symbol,
+        target: decision.targetDigit,
+        trigger: decision.entryTrigger,
+        duration: decision.recommendedDuration,
+        marketQuality: decision.marketQuality,
+        signalStability: decision.signalStability,
+        strategyAgreement: decision.strategyAgreement,
+        predictionAge: decision.predictionAge,
+        result: won ? "win" : "loss",
+      });
+    }
     if (won) {
       store.addActivity(
         this.attempt >= 2

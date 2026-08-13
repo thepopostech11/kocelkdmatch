@@ -20,7 +20,7 @@ import {
 } from "@/analysis/statistics";
 import { runStrategies } from "@/analysis/strategies";
 import { ModelCalibrationEngine } from "@/analysis/calibration";
-import { buildPrediction, strategyAgreement } from "@/analysis/prediction";
+import { buildPrediction } from "@/analysis/prediction";
 import type { AnalysisSnapshot, Prediction, Tick } from "@/analysis/types";
 import type { DerivAccount } from "@/types";
 import { selectActiveAccount, useAuthStore } from "@/stores/authStore";
@@ -461,11 +461,7 @@ class MarketEngineImpl {
   /** The unified AI decision engine — identical to the Analysis page path. */
   private predictionFor(snapshot: AnalysisSnapshot): Prediction | null {
     if (snapshot.digits.length < 20) return null;
-    const prediction = buildPrediction(snapshot, this.calibration);
-    prediction.strategyAgreement = Math.round(
-      strategyAgreement(snapshot, prediction.targetDigit) * 100,
-    );
-    return prediction;
+    return buildPrediction(snapshot, this.calibration);
   }
 
   private publishMarkets() {
@@ -980,9 +976,6 @@ class MarketEngineImpl {
   predict(): Prediction | null {
     if (this.buffer.length < 20) return null;
     const prediction = buildPrediction(this.snapshot, this.calibration);
-    prediction.strategyAgreement = Math.round(
-      strategyAgreement(this.snapshot, prediction.targetDigit) * 100,
-    );
     this.prediction = prediction;
     this.entry = {
       armed: true,
