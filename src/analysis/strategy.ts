@@ -409,9 +409,9 @@ export function evaluateStrategy(
       : predictionValid
         ? "NO TRADE"
         : "SIGNAL EXPIRED",
-    confidence: eligible ? confidence : 0,
+    confidence,
     rawConfidence: Math.round(rawConfidence),
-    opportunityScore: eligible ? opportunityScore : 0,
+    opportunityScore,
     marketQuality: Math.round(marketQuality),
     signalStability: Math.round(signalStability),
     strategyAgreement: Math.round(strategyAgreement),
