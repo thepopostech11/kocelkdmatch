@@ -428,6 +428,15 @@ class BotEngineImpl {
     const todayPnl = history
       .filter((trade) => trade.closedAt >= start)
       .reduce((total, trade) => total + trade.profit, 0);
+    // Risk controls always override strategy signals.
+    const settings = useSettingsStore.getState();
+    const botStats = useBotStore.getState().stats;
+    if (settings.maxBotTrades > 0 && botStats.realTradesExecuted >= settings.maxBotTrades) {
+      throw new Error("BOT TRADE LIMIT REACHED — no new trades will be opened.");
+    }
+    if (settings.botLossLimit > 0 && botStats.totalPnl <= -Math.abs(settings.botLossLimit)) {
+      throw new Error("BOT LOSS LIMIT REACHED — no new trades will be opened.");
+    }
     if (stake > risk.maxStakeWarning) throw new Error("Stake exceeds the configured bot safety limit.");
     if (todayPnl >= risk.dailyProfitLimit) throw new Error("Daily profit limit reached. The bot will not open a new trade.");
     if (todayPnl <= -risk.dailyLossLimit) throw new Error("Daily loss limit reached. The bot will not open a new trade.");
