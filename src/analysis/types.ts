@@ -69,6 +69,8 @@ export type AnalysisSnapshot = {
   symbol: string;
   window: number;
   digits: number[];
+  /** Extended rolling history (up to 500 ticks) for multi-window analysis. */
+  history?: number[];
   stats: DigitStat[];
   live: LiveStatistics;
   quality: MarketQuality;

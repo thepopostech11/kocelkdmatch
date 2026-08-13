@@ -34,12 +34,12 @@ export function buildPrediction(
   calibration: ModelCalibrationEngine,
   attempt = 1,
 ): Prediction {
-  // The new Strategy Engine is the single source of strategy truth.
-  const strategy = evaluateStrategy(snapshot, getStrategySettings(), attempt);
+  // The Matches Strategy Engine is the single source of strategy truth.
+  const strategy = evaluateStrategy(snapshot, getStrategySettings(), attempt, calibration);
   const target = strategy.targetDigit;
-  const entryDigit = attempt >= 2 ? strategy.recoveryEntryDigit : strategy.firstEntryDigit;
+  const entryDigit = strategy.entryTrigger;
 
-  const agreement = strategyAgreement(snapshot, target);
+  const agreement = strategy.strategyAgreement / 100;
   const trigger = {
     digit: entryDigit,
     probability: snapshot.transition[entryDigit]?.[target] ?? 0.1,
@@ -47,25 +47,12 @@ export function buildPrediction(
   const stat = snapshot.stats[target]!;
 
   const suggestedDuration = strategy.recommendedDuration;
-  const observationWindow = Math.max(suggestedDuration, strategy.attempt ? getStrategySettings().signalExpirationTicks : 30);
+  const observationWindow = Math.max(suggestedDuration, strategy.validUntilTicks);
 
   const confidence = strategy.confidence;
-
-  const entryOpportunity = Math.round(
-    Math.max(0, Math.min(100, trigger.probability * 220 + snapshot.quality.gapStability * 0.3)),
-  );
-
+  const entryOpportunity = strategy.opportunityScore;
   const predictionHealth = Math.round(
-    Math.max(
-      0,
-      Math.min(
-        100,
-        snapshot.quality.dataSufficiency * 0.3 +
-          snapshot.quality.signalStability * 0.25 +
-          confidence * 0.25 +
-          snapshot.quality.frequencyStability * 0.2,
-      ),
-    ),
+    Math.max(0, Math.min(100, strategy.marketQuality * 0.5 + strategy.signalStability * 0.3 + confidence * 0.2)),
   );
 
   const ranked = [...snapshot.strategies]
@@ -76,38 +63,36 @@ export function buildPrediction(
   const supporting = ranked.slice(1, 5).map((r) => r.s.name);
 
   const reasoning: string[] = [];
-  reasoning.push(
-    `Highest occurring digit ${strategy.targetDigit} at ${strategy.highestDigitFrequency.toFixed(1)}% — MATCH target.`,
-  );
-  reasoning.push(
-    attempt >= 2
-      ? `Recovery entry trigger ${strategy.recoveryEntryDigit} (second highest at ${strategy.secondHighestDigitFrequency.toFixed(1)}%) — target stays ${strategy.targetDigit}.`
-      : `First entry trigger ${strategy.firstEntryDigit} (lowest at ${strategy.lowestDigitFrequency.toFixed(1)}%) — MATCH ${strategy.targetDigit} for ${strategy.recommendedDuration} ticks.`,
-  );
+  if (strategy.eligible) {
+    reasoning.push(
+      `MATCH target ${target} scored ${strategy.scores[target]!.toFixed(1)} — ${strategy.separation.toFixed(2)} points clear of the runner-up.`,
+    );
+    reasoning.push(
+      `Entry trigger ${entryDigit} → ${target} transition probability ${(trigger.probability * 100).toFixed(1)}% · duration ${suggestedDuration} tick${suggestedDuration === 1 ? "" : "s"}.`,
+    );
+  } else {
+    reasoning.push("NO QUALIFIED MATCH SIGNAL — the strategy rejected this setup.");
+  }
   for (const reason of strategy.rejectionReasons) reasoning.push(reason);
+
+  const windows = strategy.windowFrequencies
+    .map((w) => `${w.window}t ${w.percentage.toFixed(1)}% (#${w.rank})`)
+    .join(" · ");
+  reasoning.push(`Multi-window frequency for ${target}: ${windows}.`);
+  reasoning.push(
+    `Weighted-recency ${strategy.components.weightedFrequencyScore.toFixed(0)} · momentum ${strategy.components.momentumScore.toFixed(0)} · transition ${strategy.components.transitionScore.toFixed(0)} · gap ${strategy.components.gapScore.toFixed(0)} · repeat ${strategy.components.repeatScore.toFixed(0)}.`,
+  );
   if (stat.currentGap > stat.averageGap)
     reasoning.push(
-      `Digit ${target} is ${stat.currentGap} ticks into a gap versus an ${stat.averageGap.toFixed(1)} tick average.`,
+      `Digit ${target} is ${stat.currentGap} ticks into a gap versus an ${stat.averageGap.toFixed(1)} tick average (supporting feature only).`,
     );
-  if (stat.currentDrought >= stat.longestDrought * 0.7 && stat.longestDrought > 0)
-    reasoning.push(
-      `Drought of ${stat.currentDrought} ticks approaches its session maximum of ${stat.longestDrought}.`,
-    );
-  reasoning.push(
-    `Transition probability from trigger ${trigger.digit} to ${target} is ${(trigger.probability * 100).toFixed(1)}%.`,
-  );
   reasoning.push(
     snapshot.quality.entropy < 92
       ? `Entropy at ${snapshot.quality.entropy.toFixed(1)}% shows an exploitable skew.`
       : `Entropy at ${snapshot.quality.entropy.toFixed(1)}% indicates near-uniform randomness — treat with care.`,
   );
   reasoning.push(
-    snapshot.quality.volatility < 55
-      ? `Volatility is stable at ${snapshot.quality.volatility.toFixed(1)}%.`
-      : `Volatility is elevated at ${snapshot.quality.volatility.toFixed(1)}%.`,
-  );
-  reasoning.push(
-    `${Math.round(agreement * 100)}% of ${snapshot.strategies.length} models agree on digit ${target}.`,
+    `${strategy.strategyAgreement}% component agreement · signal stability ${strategy.signalStability}% · market quality ${strategy.marketQuality}%.`,
   );
   if (winning) reasoning.push(`${winning.name}: ${winning.note}.`);
 
@@ -122,14 +107,14 @@ export function buildPrediction(
     observationWindow,
     confidence,
     entryOpportunity,
-    marketQuality: Math.round(snapshot.quality.overall),
+    marketQuality: strategy.marketQuality,
     predictionHealth,
-    winningStrategy: winning?.name ?? "Unified Consensus",
+    winningStrategy: winning?.name ?? "Matches Strategy Engine",
     supportingStrategies: supporting,
     reasoning,
     lifetimeTicks: observationWindow,
     strategyAgreement: Math.round(agreement * 100),
-    stability: Math.round(snapshot.quality.signalStability),
+    stability: strategy.signalStability,
     bufferSizeAtRun: snapshot.live.bufferSize,
     strategy,
   };
