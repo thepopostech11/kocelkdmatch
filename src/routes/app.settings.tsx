@@ -16,6 +16,7 @@ import {
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useBotStore } from "@/stores/botStore";
 import { APP_CONFIG, SYMBOLS, TICK_WINDOWS } from "@/config/app";
 import { MODULE_REGISTRY } from "@/services/moduleRegistry";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
@@ -79,6 +80,8 @@ function SettingsPage() {
   const logout = useAuthStore((st) => st.logout);
   const symbol = useConnectionStore((st) => st.symbol);
   const setSymbol = useConnectionStore((st) => st.setSymbol);
+  const botMinimumConfidence = useBotStore((st) => st.minimumConfidence);
+  const setBotMinimumConfidence = useBotStore((st) => st.setMinimumConfidence);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
