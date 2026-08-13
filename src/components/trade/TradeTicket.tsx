@@ -11,6 +11,7 @@ import {
 } from "@/hooks/useMarket";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useTradeStore } from "@/stores/tradeStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { TradingEngine } from "@/market/TradingEngine";
 import {
   TradeValidationError,
@@ -173,6 +174,30 @@ export function TradeTicket() {
         parameter: "permission",
         value: "read only",
         reason: "This Deriv session does not include the trade scope.",
+      });
+      return;
+    }
+
+    // Manual risk controls always override a signal.
+    const settings = useSettingsStore.getState();
+    const dayStart = new Date().setHours(0, 0, 0, 0);
+    const todays = useTradeStore.getState().history.filter((t) => t.closedAt >= dayStart);
+    const todayLoss = todays.reduce((total, t) => total + Math.min(0, t.profit), 0);
+    if (settings.maxDailyManualTrades > 0 && todays.length >= settings.maxDailyManualTrades) {
+      setPhase("rejected");
+      setRejection({
+        parameter: "daily trades",
+        value: String(todays.length),
+        reason: "DAILY TRADE LIMIT REACHED — no additional manual trades today.",
+      });
+      return;
+    }
+    if (settings.manualLossLimit > 0 && todayLoss <= -Math.abs(settings.manualLossLimit)) {
+      setPhase("rejected");
+      setRejection({
+        parameter: "loss limit",
+        value: todayLoss.toFixed(2),
+        reason: "MANUAL TRADING LOSS LIMIT REACHED — no additional manual trades.",
       });
       return;
     }

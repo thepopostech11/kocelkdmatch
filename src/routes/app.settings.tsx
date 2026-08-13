@@ -16,6 +16,8 @@ import {
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useBotStore } from "@/stores/botStore";
+import { BotEngine } from "@/bot/BotEngine";
 import { APP_CONFIG, SYMBOLS, TICK_WINDOWS } from "@/config/app";
 import { MODULE_REGISTRY } from "@/services/moduleRegistry";
 import { ConnectionManager } from "@/websocket/ConnectionManager";
@@ -79,6 +81,8 @@ function SettingsPage() {
   const logout = useAuthStore((st) => st.logout);
   const symbol = useConnectionStore((st) => st.symbol);
   const setSymbol = useConnectionStore((st) => st.setSymbol);
+  const botMinimumConfidence = useBotStore((st) => st.minimumConfidence);
+  const setBotMinimumConfidence = useBotStore((st) => st.setMinimumConfidence);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-3 py-5 sm:px-6 sm:py-6">
@@ -194,7 +198,121 @@ function SettingsPage() {
               />
             </Row>
           </Section>
+
+          <Section title="Strategy settings">
+            <Row
+              label="Highest digit minimum frequency"
+              hint={`${s.strategyMinHighestFrequency}% — the strategy only activates above this`}
+            >
+              <Slider
+                className="w-44"
+                min={10}
+                max={20}
+                step={0.5}
+                value={[s.strategyMinHighestFrequency]}
+                onValueChange={([v]) => s.set("strategyMinHighestFrequency", v ?? 12)}
+              />
+            </Row>
+            <Row label="Strategy duration" hint="Contract duration in ticks (default 3)">
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={s.strategyDuration}
+                onChange={(e) => s.set("strategyDuration", Number(e.target.value))}
+                className="w-28"
+              />
+            </Row>
+            <Row label="Maximum recovery attempts" hint="1 recovery = 2 total attempts per opportunity">
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                value={s.strategyMaxRecoveryAttempts}
+                onChange={(e) => s.set("strategyMaxRecoveryAttempts", Math.min(1, Math.max(0, Number(e.target.value))))}
+                className="w-28"
+              />
+            </Row>
+            <Row label="Signal expiration" hint={`${s.strategySignalExpirationTicks} ticks before a signal expires`}>
+              <Slider
+                className="w-44"
+                min={5}
+                max={120}
+                step={5}
+                value={[s.strategySignalExpirationTicks]}
+                onValueChange={([v]) => s.set("strategySignalExpirationTicks", v ?? 30)}
+              />
+            </Row>
+            <Row label="Minimum signal stability" hint={`${s.strategyMinSignalStability}% required before trading`}>
+              <Slider
+                className="w-44"
+                min={0}
+                max={100}
+                step={5}
+                value={[s.strategyMinSignalStability]}
+                onValueChange={([v]) => s.set("strategyMinSignalStability", v ?? 0)}
+              />
+            </Row>
+          </Section>
+
+          <Section title="Bot settings">
+            <Row label="Maximum bot trades" hint="Bot stops opening new trades once reached">
+              <Input
+                type="number"
+                min={1}
+                value={s.maxBotTrades}
+                onChange={(e) => s.set("maxBotTrades", Number(e.target.value))}
+                className="w-28"
+              />
+            </Row>
+            <Row label="Minimum bot loss" hint="Cumulative bot loss limit for the session">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={s.botLossLimit}
+                onChange={(e) => s.set("botLossLimit", Number(e.target.value))}
+                className="w-28"
+              />
+            </Row>
+            <Row label="Minimum bot confidence" hint={`${botMinimumConfidence}% — the Bot only trades at or above this`}>
+              <Slider
+                className="w-44"
+                min={1}
+                max={99}
+                step={1}
+                value={[botMinimumConfidence]}
+                onValueChange={([v]) => {
+                  setBotMinimumConfidence(v ?? 30);
+                  BotEngine.setMinimumConfidence(v ?? 30);
+                }}
+              />
+            </Row>
+          </Section>
+
+          <Section title="Manual trade settings">
+            <Row label="Minimum loss" hint="Manual trading loss limit for the day">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={s.manualLossLimit}
+                onChange={(e) => s.set("manualLossLimit", Number(e.target.value))}
+                className="w-28"
+              />
+            </Row>
+            <Row label="Maximum daily trades" hint="Resets at the start of the next trading day">
+              <Input
+                type="number"
+                min={1}
+                value={s.maxDailyManualTrades}
+                onChange={(e) => s.set("maxDailyManualTrades", Number(e.target.value))}
+                className="w-28"
+              />
+            </Row>
+          </Section>
         </TabsContent>
+
 
         <TabsContent value="Notifications" className="mt-5 space-y-4">
           <Section title="Notifications">

@@ -3,6 +3,7 @@
  * recommendation package (target digit, entry trigger, duration, reasoning).
  */
 import { DIGITS } from "./statistics";
+import { evaluateStrategy, getStrategySettings } from "./strategy";
 import type { ModelCalibrationEngine } from "./calibration";
 import type { AnalysisSnapshot, Prediction } from "./types";
 
@@ -27,54 +28,28 @@ export function strategyAgreement(snapshot: AnalysisSnapshot, target: number): n
   return agree / snapshot.strategies.length;
 }
 
-/**
- * Entry trigger — the digit whose appearance historically precedes the target
- * most strongly. Derived from the transition matrix column of the target,
- * tempered by how often that trigger actually shows up.
- */
-function deriveEntryTrigger(snapshot: AnalysisSnapshot, target: number) {
-  const scored = DIGITS.map((d) => {
-    const probability = snapshot.transition[d]?.[target] ?? 0.1;
-    const availability = (snapshot.stats[d]?.percentage ?? 10) / 100;
-    const freshness = 1 / (1 + (snapshot.stats[d]?.currentGap ?? 0) / 25);
-    return { digit: d, score: probability * 0.65 + availability * 0.2 + freshness * 0.15, probability };
-  }).sort((a, b) => b.score - a.score);
-
-  const top = scored[0]!;
-  return { digit: top.digit, probability: top.probability, score: top.score };
-}
 
 export function buildPrediction(
   snapshot: AnalysisSnapshot,
   calibration: ModelCalibrationEngine,
+  attempt = 1,
 ): Prediction {
-  const fused = fuseScores(snapshot, calibration);
-  const ordered = DIGITS.map((d) => ({ digit: d, score: fused[d]! })).sort((a, b) => b.score - a.score);
-  const target = ordered[0]!.digit;
-  const margin = ordered[0]!.score - (ordered[1]?.score ?? 0);
+  // The new Strategy Engine is the single source of strategy truth.
+  const strategy = evaluateStrategy(snapshot, getStrategySettings(), attempt);
+  const target = strategy.targetDigit;
+  const entryDigit = attempt >= 2 ? strategy.recoveryEntryDigit : strategy.firstEntryDigit;
 
   const agreement = strategyAgreement(snapshot, target);
-  const trigger = deriveEntryTrigger(snapshot, target);
+  const trigger = {
+    digit: entryDigit,
+    probability: snapshot.transition[entryDigit]?.[target] ?? 0.1,
+  };
   const stat = snapshot.stats[target]!;
 
-  const suggestedDuration = Math.max(
-    1,
-    Math.min(10, Math.round(stat.averageGap > 0 ? Math.min(stat.averageGap, 9) : 3)),
-  );
-  const observationWindow = Math.max(suggestedDuration * 2, Math.round(stat.averageGap * 2) || 8);
+  const suggestedDuration = strategy.recommendedDuration;
+  const observationWindow = Math.max(suggestedDuration, strategy.attempt ? getStrategySettings().signalExpirationTicks : 30);
 
-  const confidence = Math.round(
-    Math.max(
-      5,
-      Math.min(
-        99,
-        margin * 190 +
-          agreement * 45 +
-          snapshot.quality.predictionReliability * 0.28 -
-          snapshot.quality.noise * 0.1,
-      ),
-    ),
-  );
+  const confidence = strategy.confidence;
 
   const entryOpportunity = Math.round(
     Math.max(0, Math.min(100, trigger.probability * 220 + snapshot.quality.gapStability * 0.3)),
@@ -101,6 +76,15 @@ export function buildPrediction(
   const supporting = ranked.slice(1, 5).map((r) => r.s.name);
 
   const reasoning: string[] = [];
+  reasoning.push(
+    `Highest occurring digit ${strategy.targetDigit} at ${strategy.highestDigitFrequency.toFixed(1)}% — MATCH target.`,
+  );
+  reasoning.push(
+    attempt >= 2
+      ? `Recovery entry trigger ${strategy.recoveryEntryDigit} (second highest at ${strategy.secondHighestDigitFrequency.toFixed(1)}%) — target stays ${strategy.targetDigit}.`
+      : `First entry trigger ${strategy.firstEntryDigit} (lowest at ${strategy.lowestDigitFrequency.toFixed(1)}%) — MATCH ${strategy.targetDigit} for ${strategy.recommendedDuration} ticks.`,
+  );
+  for (const reason of strategy.rejectionReasons) reasoning.push(reason);
   if (stat.currentGap > stat.averageGap)
     reasoning.push(
       `Digit ${target} is ${stat.currentGap} ticks into a gap versus an ${stat.averageGap.toFixed(1)} tick average.`,
@@ -147,5 +131,6 @@ export function buildPrediction(
     strategyAgreement: Math.round(agreement * 100),
     stability: Math.round(snapshot.quality.signalStability),
     bufferSizeAtRun: snapshot.live.bufferSize,
+    strategy,
   };
 }

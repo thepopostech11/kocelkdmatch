@@ -1,3 +1,5 @@
+import { getStrategySettings } from "@/analysis/strategy";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { MarketEngine } from "@/market/MarketEngine";
 import { TradingEngine, type OpenTrade, type TradeEvent } from "@/market/TradingEngine";
 import { useBotStore } from "@/stores/botStore";
@@ -37,6 +39,11 @@ class BotEngineImpl {
   private opportunitySequence = 0;
   private lockedTicksObserved = 0;
   private botContractIds = new Set<string>();
+  /** Strategy attempt for the locked opportunity: 1 = first entry, 2 = recovery. */
+  private attempt = 1;
+  /** Recovery entry trigger override (second-highest digit) — target never changes. */
+  private entryOverride: number | null = null;
+  private recoveryPlan: { symbol: string; target: number; entry: number; duration: number } | null = null;
 
   constructor() {
     this.tradeUnsubscribe = TradingEngine.onEvent((event) => this.handleTradeEvent(event));
@@ -126,20 +133,52 @@ class BotEngineImpl {
         this.releaseOpportunity("Locked Analysis prediction is unavailable — returning to scanning");
         return;
       }
+      // The target digit must never change while an opportunity is locked.
+      if (liveMarket.prediction.targetDigit !== lockedPrediction.targetDigit) {
+        this.releaseOpportunity("Target digit changed — signal cancelled");
+        return;
+      }
+      const triggerDigit = this.entryOverride ?? lockedPrediction.entryTrigger;
       if (epoch === this.lastObservedEpoch) return;
       this.lastObservedEpoch = epoch;
       this.lockedTicksObserved += 1;
-      if (tick.currentDigit === lockedPrediction.entryTrigger) {
+      if (tick.currentDigit === triggerDigit) {
         useBotStore.getState().addActivity(`Live digit ${tick.currentDigit} detected`);
         void this.execute(this.locked);
       } else if (this.lockedTicksObserved >= lockedPrediction.lifetimeTicks) {
-        this.releaseOpportunity("Entry trigger window expired — returning to opportunity scan");
+        this.releaseOpportunity("SIGNAL EXPIRED — returning to fresh analysis");
         return;
       } else {
         this.status = "waiting";
       }
       this.emit();
       return;
+    }
+
+    // Recovery attempt — same market, same target, second-highest digit entry.
+    if (this.recoveryPlan) {
+      const plan = this.recoveryPlan;
+      const market = opportunities.find((item) => item.symbol === plan.symbol);
+      if (!market?.prediction || !market.live || market.prediction.targetDigit !== plan.target) {
+        this.recoveryPlan = null;
+        useBotStore.getState().addActivity("Recovery signal invalidated — returning to fresh analysis");
+      } else {
+        this.locked = market;
+        this.attempt = 2;
+        this.entryOverride = plan.entry;
+        this.lockedTicksObserved = 0;
+        this.lastObservedEpoch = market.snapshot.updatedAt;
+        this.scanner.select(market.symbol);
+        this.status = "locked";
+        const activity = useBotStore.getState();
+        activity.addActivity(
+          `RECOVERY MODE · attempt 2 · MATCH ${plan.target} on trigger ${plan.entry} · ${plan.duration} ticks`,
+        );
+        this.recoveryPlan = null;
+        this.emit();
+        if (market.snapshot.live.currentDigit === plan.entry) void this.execute(market);
+        return;
+      }
     }
 
     const strongest = this.scanner.strongest;
@@ -150,6 +189,8 @@ class BotEngineImpl {
     }
 
     this.locked = strongest;
+    this.attempt = 1;
+    this.entryOverride = null;
     this.opportunitySequence += 1;
     this.opportunityId = this.createOpportunityId(this.opportunitySequence);
     this.lockedTicksObserved = 0;
@@ -180,11 +221,11 @@ class BotEngineImpl {
     // Final pre-trade check — re-read the live shared analysis snapshot.
     const fresh = this.scanner.opportunities.find((item) => item.symbol === opportunity.symbol);
     const freshPrediction = fresh?.prediction;
+    const triggerDigit = this.entryOverride ?? prediction.entryTrigger;
     const stale = !fresh?.qualified || !fresh.live || !freshPrediction
       || freshPrediction.targetDigit !== prediction.targetDigit
-      || freshPrediction.entryTrigger !== prediction.entryTrigger
       || freshPrediction.suggestedDuration !== prediction.suggestedDuration
-      || fresh.snapshot.live.currentDigit !== prediction.entryTrigger
+      || fresh.snapshot.live.currentDigit !== triggerDigit
       || Date.now() - fresh.snapshot.updatedAt > 15_000;
     if (stale) {
       this.releaseOpportunity("Final shared Analysis validation failed — returning to scanning");
@@ -275,8 +316,36 @@ class BotEngineImpl {
     store.addActivity(
       `Contract ${event.trade.contractId} finished — ${event.trade.status} ${event.trade.profit >= 0 ? "+" : ""}${event.trade.profit.toFixed(2)} ${event.trade.currency}`,
     );
+
+    // ---- Strategy attempt accounting: max 2 attempts per opportunity ----
+    const settings = getStrategySettings();
+    const decision = this.locked?.prediction?.strategy ?? null;
+    const won = event.trade.profit > 0;
+    if (won) {
+      store.addActivity(
+        this.attempt >= 2
+          ? `ATTEMPT ${this.attempt} = WIN · OPPORTUNITY RECOVERED`
+          : "ATTEMPT 1 = WIN · OPPORTUNITY COMPLETE",
+      );
+      this.recoveryPlan = null;
+    } else if (this.attempt < 1 + Math.max(0, settings.maxRecoveryAttempts) && decision) {
+      store.addActivity("ATTEMPT 1 = LOSS · RECOVERY MODE");
+      this.recoveryPlan = {
+        symbol: event.trade.symbol,
+        target: decision.targetDigit,
+        entry: decision.recoveryEntryDigit,
+        duration: decision.recommendedDuration,
+      };
+      store.addActivity(`Waiting for second-highest digit ${decision.recoveryEntryDigit}`);
+    } else {
+      store.addActivity(`ATTEMPT ${this.attempt} = LOSS · STRATEGY SIGNAL FAILED`);
+      this.recoveryPlan = null;
+    }
+
     this.locked = null;
     this.opportunityId = null;
+    this.entryOverride = null;
+    this.attempt = 1;
     this.scanner.select(null);
     this.status = this.running ? "scanning" : "stopped";
     this.emit();
@@ -359,6 +428,15 @@ class BotEngineImpl {
     const todayPnl = history
       .filter((trade) => trade.closedAt >= start)
       .reduce((total, trade) => total + trade.profit, 0);
+    // Risk controls always override strategy signals.
+    const settings = useSettingsStore.getState();
+    const botStats = useBotStore.getState().stats;
+    if (settings.maxBotTrades > 0 && botStats.realTradesExecuted >= settings.maxBotTrades) {
+      throw new Error("BOT TRADE LIMIT REACHED — no new trades will be opened.");
+    }
+    if (settings.botLossLimit > 0 && botStats.totalPnl <= -Math.abs(settings.botLossLimit)) {
+      throw new Error("BOT LOSS LIMIT REACHED — no new trades will be opened.");
+    }
     if (stake > risk.maxStakeWarning) throw new Error("Stake exceeds the configured bot safety limit.");
     if (todayPnl >= risk.dailyProfitLimit) throw new Error("Daily profit limit reached. The bot will not open a new trade.");
     if (todayPnl <= -risk.dailyLossLimit) throw new Error("Daily loss limit reached. The bot will not open a new trade.");
