@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Activity, Bot, CircleStop, Play, Radar, ShieldCheck } from "lucide-react";
+import { Activity, Bot, CircleStop, Play, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { useBotEngine, useScannerMarkets } from "@/hooks/useBot";
 import { useBotStore } from "@/stores/botStore";
 import { useAccountInfo, useAnalysisState, useDiagnostics } from "@/hooks/useMarket";
@@ -50,10 +49,10 @@ function BotPage() {
   const readyMarkets = markets.filter((item) => item.ready).length;
   const qualifiedMarkets = markets.filter((item) => item.qualified).length;
   const marketCount = analysisState.symbols.length || totalMarkets;
-  const best = markets.find((item) => item.status === "best" || item.status === "selected") ?? null;
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;
+  const currentState = stateLabel(engine.status, prediction);
 
 
   const start = async () => {
@@ -80,8 +79,8 @@ function BotPage() {
 
       <section className="panel grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold"><Radar className="size-4 text-accent" />AUTO MARKET SCANNER</div>
-          <p className="mt-1 text-xs text-muted-foreground">The bot selects markets, target digits, triggers, and duration only after every critical gate passes.</p>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Bot className="size-4 text-primary" />CURRENT STATE</div>
+          <p className="mt-2 text-xs text-muted-foreground">The bot always consumes the current shared MATCHES analysis snapshot from the single analysis engine.</p>
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
             <span>Feed: <strong className="text-foreground">{diagnostics.feed}</strong></span>
             <span>Authorization: <strong className="text-foreground">{account.authorised ? "verified" : "unavailable"}</strong></span>
@@ -89,82 +88,24 @@ function BotPage() {
             <span>Analysis markets: <strong className="text-foreground">{marketCount} symbol{marketCount === 1 ? "" : "s"}</strong></span>
           </div>
 
-          <details className="mt-4">
-            <summary className="text-sm font-bold">Live Analysis Scanner</summary>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-              <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
-              <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
-              <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
-              <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
-              <Counter label="Min confidence" value={`${minimumConfidence}%`} />
-            </div>
-
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {markets.length ? (
-                markets.map((item, index) => (
-                  <ScannerCard
-                    key={item.symbol}
-                    index={index + 1}
-                    item={item}
-                    botStatus={engine.status}
-                    lockedSymbol={selected?.symbol ?? null}
-                  />
-                ))
-              ) : (
-                <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
-                  Waiting for the shared Analysis Engine to publish live markets…
-                </p>
-              )}
-            </div>
-
-            {best && best.prediction && (
-              <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
-                <p className="font-bold">Best current opportunity · {best.displayName}</p>
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                  <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
-                  <Metric label="Opportunity" value={String(best.opportunityScore)} />
-                  <Metric label="Target" value={String(best.prediction.targetDigit)} />
-                  <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
-                  <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
-                </div>
+          <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">{currentState}</p>
+            <p className="mt-2 text-lg font-bold">{prediction ? `Candidate: ${selected?.displayName ?? "Volatility 75"}` : "Waiting for live analysis"}</p>
+            {prediction && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                <Metric label="Digit" value={String(prediction.targetDigit)} />
+                <Metric label="Confidence" value={`${prediction.confidence}%`} />
+                <Metric label="Duration" value={`${prediction.suggestedDuration} ticks`} />
+                <Metric label="Trigger" value={String(prediction.entryTrigger)} />
               </div>
             )}
-
-            {!qualifiedMarkets && totalMarkets > 0 && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
-              </p>
-            )}
-          </details>
+          </div>
         </div>
 
         <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">
           <label className="text-xs text-muted-foreground">Stake amount
             <Input className="mt-1" type="number" min="0.35" step="0.01" value={stake} disabled={running} onChange={(event) => setStake(Number(event.target.value))} />
           </label>
-
-          <details className="text-xs text-muted-foreground">
-            <summary className="cursor-pointer">Advanced filters (hidden)</summary>
-            <div className="mt-2">
-              <div className="flex items-center justify-between">
-                <span>Min confidence</span>
-                <strong className="text-foreground">{minimumConfidence}%</strong>
-              </div>
-              <Slider
-                className="mt-2"
-                value={[minimumConfidence]}
-                min={1}
-                max={98}
-                step={1}
-                disabled={running}
-                onValueChange={(value) => {
-                  const next = value[0] ?? 1;
-                  setMinimumConfidence(next);
-                  engine.setMinimumConfidence(next);
-                }}
-              />
-            </div>
-          </details>
 
           {running ? (
             <Button className="sm:col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
@@ -176,23 +117,16 @@ function BotPage() {
 
       <section className="panel p-3 sm:p-4">
         <details open>
-          <summary className="text-sm font-bold">Shared Analysis Connection</summary>
+          <summary className="text-sm font-bold">SHARED ANALYSIS CONNECTION</summary>
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <Metric label="Analysis engine" value={diagnostics.feed === "streaming" ? "RUNNING" : diagnostics.feed.toUpperCase()} />
-            <Metric label="Analysis markets" value={String(sync.analysisMarkets)} />
-            <Metric label="Bot received" value={String(sync.botMarkets)} />
-            <Metric label="Bot subscription" value={sync.subscribed ? "CONNECTED" : "IDLE"} />
-            <Metric label="Latest tick" value={sync.lastTickAt ? new Date(sync.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+            <Metric label="Analysis engine" value={diagnostics.feed === "streaming" ? "CONNECTED" : diagnostics.feed.toUpperCase()} />
+            <Metric label="Live data" value={diagnostics.feed === "streaming" ? "STREAMING" : "IDLE"} />
+            <Metric label="7-layer engine" value={"ACTIVE"} />
             <Metric label="Latest analysis" value={sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"} />
-            <Metric label="Confidence source" value="Analysis Engine" />
-            <Metric label="Active threshold" value={`${sync.threshold}%`} />
-            <Metric label="Qualified markets" value={String(qualifiedMarkets)} />
-            <Metric label="Opportunity ID" value={sync.opportunityId ?? "—"} />
             <Metric label="Selected symbol" value={sync.selectedSymbol ?? "—"} />
-            <Metric label="Selected confidence" value={sync.selectedConfidence == null ? "—" : `${sync.selectedConfidence}%`} />
-            <Metric label="Target / Trigger" value={prediction ? `${prediction.targetDigit} / ${prediction.entryTrigger}` : "—"} />
+            <Metric label="Target" value={prediction ? String(prediction.targetDigit) : "—"} />
+            <Metric label="Confidence" value={prediction ? `${prediction.confidence}%` : "—"} />
             <Metric label="Duration" value={prediction ? `${prediction.suggestedDuration} ticks` : "—"} />
-            <Metric label="Execution" value={sync.execution.replaceAll("-", " ").toUpperCase()} />
           </div>
           {sync.analysisMarkets > 0 && sync.botMarkets === 0 && (
             <p className="mt-3 text-xs text-destructive">
@@ -200,39 +134,6 @@ function BotPage() {
             </p>
           )}
         </details>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="panel p-4 lg:col-span-2">
-          <h2 className="text-sm font-bold">Opportunity Ranking</h2>
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-xs">
-              <thead className="border-b text-muted-foreground"><tr>{["Symbol", "Confidence", "Opportunity", "Strategy", "Trigger", "Target", "Status"].map((label) => <th key={label} className="px-2 py-2 font-medium">{label}</th>)}</tr></thead>
-              <tbody>{markets.length ? markets.map((item) => (
-                <tr key={item.symbol} className="border-b border-border/60">
-                  <td className="px-2 py-2.5 font-medium">{item.displayName}</td>
-                  <td className="px-2 py-2.5">{item.confidence}%</td>
-                  <td className="px-2 py-2.5">{item.opportunityScore}</td>
-                  <td className="px-2 py-2.5">{item.prediction?.winningStrategy ?? "Warming up"}</td>
-                  <td className="px-2 py-2.5 font-mono">{item.prediction?.entryTrigger ?? "—"}</td>
-                  <td className="px-2 py-2.5 font-mono">{item.prediction?.targetDigit ?? "—"}</td>
-                  <td className="px-2 py-2.5">{statusLabel(item.status)}</td>
-                </tr>
-              )) : <tr><td colSpan={7} className="px-2 py-8 text-center text-muted-foreground">Waiting for live analysis markets…</td></tr>}</tbody>
-            </table>
-          </div>
-        </div>
-
-
-        <div className="panel p-4">
-          <h2 className="text-sm font-bold">Market Lock</h2>
-          {selected && prediction ? <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
-            <Metric label="Symbol" value={selected.displayName} /><Metric label="Confidence" value={`${prediction.confidence}%`} />
-            <Metric label="Target" value={String(prediction.targetDigit)} /><Metric label="Trigger" value={String(prediction.entryTrigger)} />
-            <Metric label="Duration" value={`${prediction.suggestedDuration} ticks`} /><Metric label="Agreement" value={`${prediction.strategyAgreement}%`} />
-            <div className="col-span-2"><Metric label="Strategy" value={prediction.winningStrategy} /></div>
-          </dl> : <div className="mt-6 text-center text-xs text-muted-foreground"><ShieldCheck className="mx-auto mb-2 size-7" />No market locked. The bot will wait rather than force a trade.</div>}
-        </div>
       </section>
 
       {selected?.eligibility && <section className="panel p-4"><h2 className="text-sm font-bold">Trade Eligibility</h2><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{selected.eligibility.checks.map((check) => <div key={check.id} className="flex items-center justify-between border-b border-border/60 py-1 text-xs"><span>{check.label}</span><strong className={check.passed ? "text-success" : "text-destructive"}>{check.passed ? "PASS" : "FAIL"}</strong></div>)}</div></section>}

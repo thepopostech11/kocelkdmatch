@@ -66,7 +66,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const TABS = [
   "General",
-  "Trading",
   "Notifications",
   "Appearance",
   "Performance",
@@ -137,14 +136,6 @@ function SettingsPage() {
             </Row>
           </Section>
         </TabsContent>
-
-        <TabsContent value="Trading" className="mt-5 space-y-4">
-          <Section title="Trading">
-            <p className="text-sm text-muted-foreground">Trading defaults, strategy and bot controls are managed by the MATCHES engine and hidden in this view to reduce clutter.</p>
-            <p className="mt-2 text-xs text-muted-foreground">All underlying settings remain available programmatically and via advanced panels.</p>
-          </Section>
-        </TabsContent>
-
 
         <TabsContent value="Notifications" className="mt-5 space-y-4">
           <Section title="Notifications">

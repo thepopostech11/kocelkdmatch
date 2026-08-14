@@ -1,57 +1,168 @@
 import type { AnalysisSnapshot, Prediction } from "./types";
 
-type LayerResult = {
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+export type LayerResult = {
   name: string;
-  passed: boolean;
+  status: "PASS" | "FAIL" | "ANALYZING";
   score: number;
   threshold: number;
+  reason: string;
+  metrics: Record<string, number | string>;
+  timestamp: number;
 };
 
+function buildLayer(
+  name: string,
+  score: number,
+  threshold: number,
+  pass: boolean,
+  reason: string,
+  metrics: Record<string, number | string>,
+): LayerResult {
+  return {
+    name,
+    status: pass ? "PASS" : "FAIL",
+    score: clamp(Math.round(score), 0, 100),
+    threshold,
+    reason,
+    metrics,
+    timestamp: Date.now(),
+  };
+}
+
 export function validate7Layers(snapshot: AnalysisSnapshot, prediction: Prediction) {
-  const s = prediction.strategy;
-  const stat = snapshot.stats[prediction.targetDigit];
-  const components = s?.components ?? {};
+  const targetDigit = prediction.targetDigit;
+  const safeSnapshot = snapshot ?? ({} as AnalysisSnapshot);
+  const safeStats = safeSnapshot.stats ?? [];
+  const safeQuality = safeSnapshot.quality ?? { overall: 0, entropy: 0, dataSufficiency: 0 };
+  const safeLive = safeSnapshot.live ?? { currentDigit: 0, bufferSize: 0 };
+  const safeTransition = safeSnapshot.transition ?? [];
 
-  const layers: LayerResult[] = [];
+  const stat = safeStats[targetDigit] ?? null;
+  const digits = safeSnapshot.digits ?? [];
+  const history = safeSnapshot.history?.length ? safeSnapshot.history : digits;
+  const totalTicks = history.length || digits.length || 1;
+  const currentDigit = safeLive.currentDigit ?? 0;
+  const transitionValue = Array.isArray(safeTransition[currentDigit]) ? safeTransition[currentDigit][targetDigit] ?? 0 : 0;
 
-  // Layer 1: Digit Frequency
-  const freq = stat?.percentage ?? 0;
-  const minFreq = 12;
-  layers.push({ name: "Digit Frequency", passed: freq >= minFreq, score: freq, threshold: minFreq });
+  const recentWindow = history.slice(-50);
+  const mediumWindow = history.slice(-Math.max(100, safeSnapshot.window || 100));
+  const longWindow = history.slice(-Math.max(250, safeSnapshot.window * 3 || 250));
 
-  // Layer 2: Gap / Drought
-  const gapScore = components.gapScore ?? 0;
-  layers.push({ name: "Gap / Drought", passed: gapScore >= 35, score: gapScore, threshold: 35 });
+  const recentPct = recentWindow.length ? (recentWindow.filter((d) => d === targetDigit).length / recentWindow.length) * 100 : 0;
+  const mediumPct = mediumWindow.length ? (mediumWindow.filter((d) => d === targetDigit).length / mediumWindow.length) * 100 : 0;
+  const longPct = longWindow.length ? (longWindow.filter((d) => d === targetDigit).length / longWindow.length) * 100 : 0;
+  const momentumScore = clamp(((recentPct - longPct) + 20) * 2.5, 0, 100);
 
-  // Layer 3: Repeat / Recurrence
-  const repeatScore = components.repeatScore ?? 0;
-  layers.push({ name: "Repeat / Recurrence", passed: repeatScore >= 20, score: repeatScore, threshold: 20 });
+  const repeatWindow = history.slice(-30);
+  const repeatHits = repeatWindow.filter((d) => d === targetDigit).length;
+  const repeatScore = clamp((repeatHits / Math.max(repeatWindow.length, 1)) * 100, 0, 100);
 
-  // Layer 4: Frequency Momentum
-  const momentum = components.momentumScore ?? 0;
-  layers.push({ name: "Frequency Momentum", passed: momentum >= 30, score: momentum, threshold: 30 });
+  const frequencyScore = clamp((stat?.percentage ?? 0), 0, 100);
+  const frequencyPass = frequencyScore >= 12;
 
-  // Layer 5: Multi-Window Consensus
-  const agreement = prediction.strategyAgreement ?? 0;
-  layers.push({ name: "Multi-Window Consensus", passed: agreement >= 40, score: agreement, threshold: 40 });
+  const gapMetric = stat ? Math.abs(Math.max(0, stat.currentGap - stat.averageGap)) : 0;
+  const gapScore = clamp(100 - (gapMetric / Math.max(1, stat?.averageGap ?? 1)) * 65, 0, 100);
+  const gapPass = gapScore >= 35;
 
-  // Layer 6: Tick-Duration Probability (transition strength)
-  const transition = components.transitionScore ?? 0;
-  layers.push({ name: "Tick-Duration Probability", passed: transition >= 25, score: transition, threshold: 25 });
+  const recurrenceScore = repeatScore;
+  const recurrencePass = recurrenceScore >= 20;
 
-  // Layer 7: Distribution Validation (market quality)
-  const quality = snapshot.quality?.overall ?? snapshot.quality?.entropy ?? 0;
-  const qualityScore = snapshot.quality?.entropy ? 100 - snapshot.quality.entropy : (snapshot.quality?.overall ?? 0);
-  layers.push({ name: "Distribution Validation", passed: qualityScore >= 30, score: qualityScore, threshold: 30 });
+  const momentumPass = momentumScore >= 30;
 
-  const passed = layers.every((l) => l.passed);
+  const multiWindowWindow = [recentWindow, mediumWindow, longWindow]
+    .map((window) => ({ length: window.length, pct: window.length ? (window.filter((d) => d === targetDigit).length / window.length) * 100 : 0 }))
+    .filter((entry) => entry.length > 0);
+  const consensusScore = multiWindowWindow.length
+    ? (multiWindowWindow.reduce((total, entry) => total + entry.pct, 0) / multiWindowWindow.length)
+    : 0;
+  const consensusPass = consensusScore >= 12;
+
+  const durationProbability = clamp((transitionValue ?? 0) * 100 + (frequencyScore * 0.25), 0, 100);
+  const durationPass = durationProbability >= 25;
+
+  const distributionScore = clamp(
+    (safeQuality.overall * 0.5) +
+      ((100 - (safeQuality.entropy || 0)) * 0.3) +
+      ((safeQuality.dataSufficiency ?? 0) * 0.2),
+    0,
+    100,
+  );
+  const distributionPass = distributionScore >= 35;
+
+  const layers: LayerResult[] = [
+    buildLayer(
+      "Digit Frequency",
+      frequencyScore,
+      12,
+      frequencyPass,
+      `Digit ${targetDigit} appears ${stat?.count ?? 0} times in ${totalTicks} ticks (${frequencyScore.toFixed(1)}%).`,
+      { digit: targetDigit, count: stat?.count ?? 0, percentage: frequencyScore },
+    ),
+    buildLayer(
+      "Gap / Drought",
+      gapScore,
+      35,
+      gapPass,
+      `Gap behaviour is ${gapScore.toFixed(1)}% of the ideal range; current gap ${stat?.currentGap ?? 0} vs average ${stat?.averageGap ?? 0}.`,
+      { currentGap: stat?.currentGap ?? 0, averageGap: stat?.averageGap ?? 0, score: gapScore },
+    ),
+    buildLayer(
+      "Repeat / Recurrence",
+      recurrenceScore,
+      20,
+      recurrencePass,
+      `Recent recurrence hit rate is ${recurrenceScore.toFixed(1)}% within the short recurrence window.`,
+      { repeatHits, windowSize: repeatWindow.length, score: recurrenceScore },
+    ),
+    buildLayer(
+      "Frequency Momentum",
+      momentumScore,
+      30,
+      momentumPass,
+      `Short-window momentum is ${momentumScore.toFixed(1)}% vs ${longPct.toFixed(1)}% long-window baseline.`,
+      { recentPct, longPct, score: momentumScore },
+    ),
+    buildLayer(
+      "Multi-Window Consensus",
+      consensusScore,
+      12,
+      consensusPass,
+      `Consensus across recent windows is ${consensusScore.toFixed(1)}% for digit ${targetDigit}.`,
+      { recentPct, mediumPct, longPct, score: consensusScore },
+    ),
+    buildLayer(
+      "Tick-Duration Probability",
+      durationProbability,
+      25,
+      durationPass,
+      `The live transition + duration likelihood for digit ${targetDigit} is ${durationProbability.toFixed(1)}%.`,
+      { transitionProbability: transitionValue * 100, duration: prediction.suggestedDuration, score: durationProbability },
+    ),
+    buildLayer(
+      "Distribution Validation",
+      distributionScore,
+      35,
+      distributionPass,
+      `Market distribution score is ${distributionScore.toFixed(1)}% with entropy ${(safeQuality.entropy ?? 0).toFixed(1)}%.`,
+      { overall: safeQuality.overall, entropy: safeQuality.entropy ?? 0, score: distributionScore },
+    ),
+  ];
+
+  const passed = layers.every((layer) => layer.status === "PASS");
 
   return {
     passed,
     layers,
     summary: {
+      passedLayers: layers.filter((layer) => layer.status === "PASS").length,
+      failedLayers: layers.filter((layer) => layer.status === "FAIL").length,
       confidence: prediction.confidence,
-      marketQuality: snapshot.quality?.overall ?? prediction.marketQuality,
+      marketQuality: safeQuality.overall ?? prediction.marketQuality,
+      targetDigit,
+      predictedTicks: prediction.suggestedDuration,
+      noTrade: !passed,
     },
   };
 }

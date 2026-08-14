@@ -15,6 +15,7 @@ import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppAnalysisRouteImport } from './routes/app.analysis'
 import { Route as AppBotRouteImport } from './routes/app.bot'
 import { Route as AppManualTradeRouteImport } from './routes/app.manual-trade'
+import { Route as AppRiseFallRouteImport } from './routes/app.rise-fall'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 
@@ -48,6 +49,11 @@ const AppManualTradeRoute = AppManualTradeRouteImport.update({
   path: '/manual-trade',
   getParentRoute: () => AppRoute,
 } as any)
+const AppRiseFallRoute = AppRiseFallRouteImport.update({
+  id: '/rise-fall',
+  path: '/rise-fall',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/rise-fall': typeof AppRiseFallRoute
   '/app/settings': typeof AppSettingsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/rise-fall': typeof AppRiseFallRoute
   '/app/settings': typeof AppSettingsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app': typeof AppIndexRoute
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/app/analysis': typeof AppAnalysisRoute
   '/app/bot': typeof AppBotRoute
   '/app/manual-trade': typeof AppManualTradeRoute
+  '/app/rise-fall': typeof AppRiseFallRoute
   '/app/settings': typeof AppSettingsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/app/': typeof AppIndexRoute
@@ -97,6 +106,7 @@ export interface FileRouteTypes {
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
+    | '/app/rise-fall'
     | '/app/settings'
     | '/oauth/callback'
     | '/app/'
@@ -106,6 +116,7 @@ export interface FileRouteTypes {
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
+    | '/app/rise-fall'
     | '/app/settings'
     | '/oauth/callback'
     | '/app'
@@ -116,6 +127,7 @@ export interface FileRouteTypes {
     | '/app/analysis'
     | '/app/bot'
     | '/app/manual-trade'
+    | '/app/rise-fall'
     | '/app/settings'
     | '/oauth/callback'
     | '/app/'
@@ -171,6 +183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppManualTradeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/rise-fall': {
+      id: '/app/rise-fall'
+      path: '/rise-fall'
+      fullPath: '/app/rise-fall'
+      preLoaderRoute: typeof AppRiseFallRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/settings': {
       id: '/app/settings'
       path: '/settings'
@@ -192,6 +211,7 @@ interface AppRouteChildren {
   AppAnalysisRoute: typeof AppAnalysisRoute
   AppBotRoute: typeof AppBotRoute
   AppManualTradeRoute: typeof AppManualTradeRoute
+  AppRiseFallRoute: typeof AppRiseFallRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
@@ -200,6 +220,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAnalysisRoute: AppAnalysisRoute,
   AppBotRoute: AppBotRoute,
   AppManualTradeRoute: AppManualTradeRoute,
+  AppRiseFallRoute: AppRiseFallRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
 }

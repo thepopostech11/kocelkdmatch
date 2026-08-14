@@ -26,6 +26,8 @@ export function PredictionPanel() {
   const markResolved = useAnalysisStore((s) => s.markResolved);
   const notify = useNotificationStore((s) => s.push);
 
+  const validationResults = validation ?? [];
+
   const ready = snapshot.live.bufferSize >= 20;
 
   useEffect(() => {
@@ -55,18 +57,16 @@ export function PredictionPanel() {
 
   async function runValidation(prediction: NonNullable<typeof prediction>, snapshot: ReturnType<typeof useAnalysisSnapshot>) {
     const res = validate7Layers(snapshot, prediction as any);
-    // animate progressive reveal
-    setValidation(res.layers.map((l: any) => ({ name: l.name, status: "ANALYZING" as const })));
+    setValidation(res.layers.map((layer) => ({ name: layer.name, status: "ANALYZING" as const })));
     for (let i = 0; i < res.layers.length; i++) {
       await new Promise((r) => setTimeout(r, 120));
       setValidation((prev) => {
         if (!prev) return null;
         const next = prev.slice();
-        next[i] = { name: res.layers[i].name, status: res.layers[i].passed ? "PASSED" : "FAILED" };
+        next[i] = { name: res.layers[i].name, status: res.layers[i].status === "PASS" ? "PASSED" : "FAILED" };
         return next;
       });
     }
-    // If all layers passed, re-run predict() to nudge the global prediction (causes TradeTicket seeding)
     if (res.passed) {
       try {
         predict();
@@ -113,6 +113,31 @@ export function PredictionPanel() {
         </p>
       ) : (
         <>
+          {validationResults.length > 0 && (
+            <div className="mb-4 rounded-xl border border-border bg-surface-2/60 p-3">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                MATCH PREDICTION VALIDATION
+              </p>
+              <div className="space-y-2">
+                {validationResults.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between rounded-lg bg-background/70 px-3 py-2 text-xs">
+                    <span className="font-medium text-foreground">{item.name}</span>
+                    <span
+                      className={cn(
+                        "font-bold uppercase",
+                        item.status === "PASSED" && "text-success",
+                        item.status === "FAILED" && "text-destructive",
+                        item.status === "ANALYZING" && "text-warning",
+                      )}
+                    >
+                      {item.status === "ANALYZING" ? "ANALYZING" : item.status === "PASSED" ? "PASSED" : "FAILED"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mb-3 grid gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-primary/40 bg-primary/10 p-3 text-center">
               <p className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
