@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { validate7Layers } from "@/analysis/validator";
 import { Brain, Target, Timer, Zap, CheckCircle2, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePredictionState, useAnalysisSnapshot } from "@/hooks/useMarket";
 import { useAnalysisStore } from "@/stores/analysisStore";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { cn } from "@/lib/utils";
+import type { Prediction } from "@/analysis/types";
 
 function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -21,7 +21,7 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 export function PredictionPanel() {
   const snapshot = useAnalysisSnapshot();
   const { prediction, entry, predict } = usePredictionState();
-  const [validation, setValidation] = useState<{ name: string; status: "ANALYZING" | "PASSED" | "FAILED" }[] | null>(null);
+  const [validation, setValidation] = useState<{ name: string; status: "ANALYZING" | "PASS" | "FAIL"; reason?: string }[] | null>(null);
   const record = useAnalysisStore((s) => s.record);
   const markResolved = useAnalysisStore((s) => s.markResolved);
   const notify = useNotificationStore((s) => s.push);
@@ -51,39 +51,23 @@ export function PredictionPanel() {
       `Target digit ${result.targetDigit}`,
       `Entry trigger ${result.entryTrigger} · ${result.confidence}% confidence`,
     );
-    // Begin progressive validation using the prediction and snapshot data
-    runValidation(result, snapshot).catch(() => {});
+    // The result was calculated by the shared MarketEngine. This panel only
+    // reveals its mandatory validation gate progressively; it never recalculates.
+    void runValidation(result);
   };
 
-  async function runValidation(prediction: NonNullable<typeof prediction>, snapshot: ReturnType<typeof useAnalysisSnapshot>) {
-    const res = validate7Layers(snapshot, prediction as any);
+  async function runValidation(result: Prediction) {
+    const res = result.validation;
+    if (!res) return;
     setValidation(res.layers.map((layer) => ({ name: layer.name, status: "ANALYZING" as const })));
     for (let i = 0; i < res.layers.length; i++) {
       await new Promise((r) => setTimeout(r, 120));
       setValidation((prev) => {
         if (!prev) return null;
         const next = prev.slice();
-        next[i] = { name: res.layers[i].name, status: res.layers[i].status === "PASS" ? "PASSED" : "FAILED" };
+        next[i] = { name: res.layers[i].name, status: res.layers[i].status, reason: res.layers[i].reason };
         return next;
       });
-    }
-    if (res.passed) {
-      try {
-        predict();
-      } catch {}
-    }
-  }
-
-  function getMinFrequency() {
-    // read from settings store default if available
-    try {
-      // dynamic import to avoid circular hooks in render path
-      // fallback to 12
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { useSettingsStore } = require("@/stores/settingsStore");
-      return useSettingsStore.getState().strategyMinHighestFrequency ?? 12;
-    } catch {
-      return 12;
     }
   }
 
@@ -101,7 +85,7 @@ export function PredictionPanel() {
           disabled={!ready}
           className="rounded-xl bg-gradient-brand px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-elevated transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100"
         >
-          PREDICT
+          PREDICTION
         </button>
       </div>
 
@@ -125,20 +109,28 @@ export function PredictionPanel() {
                     <span
                       className={cn(
                         "font-bold uppercase",
-                        item.status === "PASSED" && "text-success",
-                        item.status === "FAILED" && "text-destructive",
+                        item.status === "PASS" && "text-success",
+                        item.status === "FAIL" && "text-destructive",
                         item.status === "ANALYZING" && "text-warning",
                       )}
                     >
-                      {item.status === "ANALYZING" ? "ANALYZING" : item.status === "PASSED" ? "PASSED" : "FAILED"}
+                      {item.status}
                     </span>
+                    {item.status === "FAIL" && item.reason && (
+                      <p className="ml-3 text-right text-[10px] text-muted-foreground">{item.reason}</p>
+                    )}
                   </div>
                 ))}
               </div>
+              {prediction?.validation && validationResults.every((item) => item.status !== "ANALYZING") && (
+                <p className={cn("mt-3 text-center text-sm font-bold", prediction.validation.passed ? "text-success" : "text-destructive")}>
+                  {prediction.validation.summary.passedLayers}/7 PASSED · {prediction.validation.passed ? "SIGNAL READY" : "NO TRADE"}
+                </p>
+              )}
             </div>
           )}
 
-          <div className="mb-3 grid gap-2 sm:grid-cols-3">
+          {prediction.validation?.passed ? <div className="mb-3 grid gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-primary/40 bg-primary/10 p-3 text-center">
               <p className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                 <Target className="size-3" /> Target digit
@@ -158,7 +150,12 @@ export function PredictionPanel() {
               <p className="font-mono text-4xl font-bold">{prediction.suggestedDuration}</p>
               <p className="text-[10px] text-muted-foreground">ticks</p>
             </div>
-          </div>
+          </div> : (
+            <div className="mb-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-center">
+              <p className="text-sm font-bold text-destructive">NO TRADE</p>
+              <p className="mt-1 text-xs text-muted-foreground">The shared engine has no fully validated recommendation. Manual trade controls remain available.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label="Confidence" value={`${prediction.confidence}%`} accent />

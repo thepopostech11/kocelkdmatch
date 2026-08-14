@@ -111,7 +111,7 @@ export class MultiSymbolScanner {
     // manufacture a competing score or confidence system.
     const opportunityScore = prediction?.entryOpportunity ?? 0;
     const qualified = Boolean(
-      prediction && confidence >= this.minimumConfidence && eligibility?.eligible,
+      prediction && prediction.validation?.passed && confidence >= this.minimumConfidence && eligibility?.eligible,
     );
 
     let status: MarketOpportunity["status"] = "warming";

@@ -33,6 +33,7 @@ export function evaluateTradeEligibility(input: {
     { id: "feed", label: "Live Feed", passed: input.feedLive && age < 15_000, critical: true },
     { id: "market", label: "Market Available", passed: input.marketOpen, critical: true },
     { id: "decision", label: "Analysis Decision", passed: validTarget && validDuration, critical: true },
+    { id: "seven-layers", label: "7-Layer Validation", passed: prediction.validation?.passed === true, critical: true },
     { id: "strategy", label: "Strategy Eligibility", passed: prediction.strategy?.strategyEligible === true, critical: true },
     { id: "confidence", label: "Confidence", passed: prediction.confidence >= input.minimumConfidence, critical: true },
     { id: "gap", label: "Gap Validation", passed: snapshot.stats[prediction.targetDigit]?.currentGap != null, critical: true },

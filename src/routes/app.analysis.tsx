@@ -1,18 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AccountCard } from "@/components/account/AccountCard";
-import { LiveAccountStatus } from "@/components/account/LiveAccountStatus";
 import { SymbolControls } from "@/components/analysis/SymbolControls";
 import { LiveCursor } from "@/components/analysis/LiveCursor";
 import { DigitDashboard } from "@/components/analysis/DigitDashboard";
 import { HeatMap } from "@/components/analysis/HeatMap";
-import { FrequencyHistogram } from "@/components/analysis/FrequencyHistogram";
-import { DigitRankingTable } from "@/components/analysis/DigitRankingTable";
 import { LiveStatisticsPanel } from "@/components/analysis/LiveStatisticsPanel";
-import { MarketQualityPanel } from "@/components/analysis/MarketQualityPanel";
 import { PredictionPanel } from "@/components/analysis/PredictionPanel";
 import { PredictionHistory } from "@/components/analysis/PredictionHistory";
-import { StrategyPanel } from "@/components/analysis/StrategyPanel";
-import { DiagnosticsPanel } from "@/components/analysis/DiagnosticsPanel";
 
 export const Route = createFileRoute("/app/analysis")({
   head: () => ({
@@ -53,17 +47,11 @@ function AnalysisPage() {
           <LiveCursor />
           <DigitDashboard />
           <PredictionPanel />
-          <FrequencyHistogram />
           <LiveStatisticsPanel />
-          <DigitRankingTable />
           <PredictionHistory />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <LiveAccountStatus />
-          <MarketQualityPanel />
           <HeatMap />
-          <StrategyPanel />
-          <DiagnosticsPanel />
         </div>
       </div>
     </div>

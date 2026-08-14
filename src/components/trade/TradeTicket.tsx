@@ -67,13 +67,13 @@ export function TradeTicket() {
   const [lastContract, setLastContract] = useState<string | null>(null);
   const submitting = phase === "validating" || phase === "pricing" || phase === "buying";
 
-  // Seed from the AI recommendation until the user overrides it.
+  // Only a fully validated shared recommendation may seed manual controls.
   useEffect(() => {
-    if (!touchedDigit && prediction) setDigit(prediction.targetDigit);
+    if (!touchedDigit && prediction?.validation?.passed) setDigit(prediction.targetDigit);
   }, [prediction, touchedDigit]);
 
   useEffect(() => {
-    if (!prediction || prediction.id === lastPredictionId) return;
+    if (!prediction?.validation?.passed || prediction.id === lastPredictionId) return;
     setTicks(prediction.suggestedDuration);
     setLastPredictionId(prediction.id);
     setTouchedTicks(false);
@@ -341,7 +341,7 @@ export function TradeTicket() {
         })}
       </div>
 
-      {prediction && !touchedDigit && (
+      {prediction?.validation?.passed && !touchedDigit && (
         <p className="mb-3 text-[11px] text-muted-foreground">
           Seeded from the AI recommendation (digit {prediction.targetDigit},{" "}
           {prediction.confidence}% confidence). Tap any digit to override.

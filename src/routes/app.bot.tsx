@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Activity, Bot, CircleStop, Play, ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBotEngine, useScannerMarkets } from "@/hooks/useBot";
@@ -31,17 +31,10 @@ function BotPage() {
   const diagnostics = useDiagnostics();
   const analysisState = useAnalysisState();
   const stake = useBotStore((state) => state.stake);
-  const minimumConfidence = useBotStore((state) => state.minimumConfidence);
   const stats = useBotStore((state) => state.stats);
   const activity = useBotStore((state) => state.activity);
   const setStake = useBotStore((state) => state.setStake);
-  const setMinimumConfidence = useBotStore((state) => state.setMinimumConfidence);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // The scanner filter always mirrors the slider, even before the bot starts.
-  useEffect(() => {
-    engine.setMinimumConfidence(minimumConfidence);
-  }, [engine, minimumConfidence]);
 
   const sync = engine.sync;
   const totalMarkets = markets.length;
@@ -52,13 +45,13 @@ function BotPage() {
   const running = engine.status !== "stopped" && engine.status !== "error";
   const selected = engine.locked;
   const prediction = selected?.prediction;
-  const currentState = stateLabel(engine.status, prediction);
+  const currentState = botStateLabel(engine.status);
 
 
   const start = async () => {
     setActionError(null);
     try {
-      await engine.start(stake, minimumConfidence);
+      await engine.start(stake);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The bot could not start.");
     }
@@ -150,6 +143,20 @@ function BotPage() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-muted-foreground">{label}</dt><dd className="mt-0.5 font-semibold">{value}</dd></div>;
+}
+
+function botStateLabel(status: BotStatus) {
+  switch (status) {
+    case "locked": return "SIGNAL READY";
+    case "waiting": return "WAITING FOR ENTRY";
+    case "requesting-proposal":
+    case "buying": return "EXECUTING";
+    case "trade-open": return "MONITORING";
+    case "result-processing": return "COOLDOWN";
+    case "scanning": return "ANALYZING";
+    case "error": return "ERROR";
+    default: return "WAITING";
+  }
 }
 
 function Counter({ label, value }: { label: string; value: string }) {

@@ -4,7 +4,6 @@ import { EntryMonitor } from "@/components/trade/EntryMonitor";
 import { OpenTradesPanel } from "@/components/trade/OpenTradesPanel";
 import { TradeHistoryPanel } from "@/components/trade/TradeHistoryPanel";
 import { TradeTicket } from "@/components/trade/TradeTicket";
-import { LiveAccountStatus } from "@/components/account/LiveAccountStatus";
 import { PredictionPanel } from "@/components/analysis/PredictionPanel";
 import { SymbolControls } from "@/components/analysis/SymbolControls";
 

@@ -50,7 +50,7 @@ class BotEngineImpl {
   }
 
 
-  async start(stake: number, minimumConfidence: number) {
+  async start(stake: number, minimumConfidence = 1) {
     if (this.running) return;
     if (!Number.isFinite(stake) || stake <= 0) throw new Error("Enter a valid stake amount.");
     if (!MarketEngine.account.authorised || !MarketEngine.diagnostics.tradingPermission) {

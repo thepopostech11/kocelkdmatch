@@ -101,4 +101,6 @@ export type Prediction = {
   bufferSizeAtRun: number;
   /** Structured output of the KOCEL DMATCH Strategy Engine. */
   strategy?: import("./strategy").StrategyDecision;
+  /** The mandatory shared Matches validation gate for this exact prediction. */
+  validation?: import("./validator").ValidatorResult;
 };
