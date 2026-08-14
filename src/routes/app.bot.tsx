@@ -88,89 +88,90 @@ function BotPage() {
             <span>Trading permission: <strong className="text-foreground">{diagnostics.tradingPermission ? "enabled" : "not granted"}</strong></span>
             <span>Analysis markets: <strong className="text-foreground">{marketCount} symbol{marketCount === 1 ? "" : "s"}</strong></span>
           </div>
-      <section className="panel p-3 sm:p-4">
-        <details open>
-          <summary className="text-sm font-bold">Live Analysis Scanner</summary>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
-            <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
-            <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
-            <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
-            <Counter label="Min confidence" value={`${minimumConfidence}%`} />
-          </div>
 
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {markets.length ? (
-              markets.map((item, index) => (
-                <ScannerCard
-                  key={item.symbol}
-                  index={index + 1}
-                  item={item}
-                  botStatus={engine.status}
-                  lockedSymbol={selected?.symbol ?? null}
-                />
-              ))
-            ) : (
-              <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
-                Waiting for the shared Analysis Engine to publish live markets…
+          <details className="mt-4">
+            <summary className="text-sm font-bold">Live Analysis Scanner</summary>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
+              <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
+              <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
+              <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
+              <Counter label="Min confidence" value={`${minimumConfidence}%`} />
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {markets.length ? (
+                markets.map((item, index) => (
+                  <ScannerCard
+                    key={item.symbol}
+                    index={index + 1}
+                    item={item}
+                    botStatus={engine.status}
+                    lockedSymbol={selected?.symbol ?? null}
+                  />
+                ))
+              ) : (
+                <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
+                  Waiting for the shared Analysis Engine to publish live markets…
+                </p>
+              )}
+            </div>
+
+            {best && best.prediction && (
+              <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
+                <p className="font-bold">Best current opportunity · {best.displayName}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
+                  <Metric label="Opportunity" value={String(best.opportunityScore)} />
+                  <Metric label="Target" value={String(best.prediction.targetDigit)} />
+                  <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
+                  <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
+                </div>
+              </div>
+            )}
+
+            {!qualifiedMarkets && totalMarkets > 0 && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
               </p>
             )}
-          </div>
-
-          {best && best.prediction && (
-            <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
-              <p className="font-bold">Best current opportunity · {best.displayName}</p>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
-                <Metric label="Opportunity" value={String(best.opportunityScore)} />
-                <Metric label="Target" value={String(best.prediction.targetDigit)} />
-                <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
-                <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
-              </div>
-            </div>
-          )}
-          {!qualifiedMarkets && totalMarkets > 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
-            </p>
-          )}
-        </details>
-      </section>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {markets.length ? (
-            markets.map((item, index) => (
-              <ScannerCard
-                key={item.symbol}
-                index={index + 1}
-                item={item}
-                botStatus={engine.status}
-                lockedSymbol={selected?.symbol ?? null}
-              />
-            ))
-          ) : (
-            <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
-              Waiting for the shared Analysis Engine to publish live markets…
-            </p>
-          )}
+          </details>
         </div>
 
-        {best && best.prediction && (
-          <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
-            <p className="font-bold">Best current opportunity · {best.displayName}</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-              <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
-              <Metric label="Opportunity" value={String(best.opportunityScore)} />
-              <Metric label="Target" value={String(best.prediction.targetDigit)} />
-              <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
-              <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">
+          <label className="text-xs text-muted-foreground">Stake amount
+            <Input className="mt-1" type="number" min="0.35" step="0.01" value={stake} disabled={running} onChange={(event) => setStake(Number(event.target.value))} />
+          </label>
+
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Advanced filters (hidden)</summary>
+            <div className="mt-2">
+              <div className="flex items-center justify-between">
+                <span>Min confidence</span>
+                <strong className="text-foreground">{minimumConfidence}%</strong>
+              </div>
+              <Slider
+                className="mt-2"
+                value={[minimumConfidence]}
+                min={1}
+                max={98}
+                step={1}
+                disabled={running}
+                onValueChange={(value) => {
+                  const next = value[0] ?? 1;
+                  setMinimumConfidence(next);
+                  engine.setMinimumConfidence(next);
+                }}
+              />
             </div>
-          </div>
-        )}
-        {!qualifiedMarkets && totalMarkets > 0 && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
-          </p>
-        )}
+          </details>
+
+          {running ? (
+            <Button className="sm:col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
+          ) : (
+            <Button className="sm:col-span-2" onClick={() => void start()}><Play />Start bot</Button>
+          )}
+        </div>
       </section>
 
       <section className="panel p-3 sm:p-4">
