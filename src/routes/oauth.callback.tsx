@@ -68,7 +68,7 @@ function OAuthCallback() {
           "Signed in",
           `Deriv session established for ${legacyAccounts.length} account(s).`,
         );
-        void navigate({ to: "/app/analysis", replace: true });
+        void navigate({ to: "/app", replace: true });
         return;
       }
 
@@ -104,7 +104,7 @@ function OAuthCallback() {
 
         setOauth("connected");
         notify("success", "Signed in", "Deriv session established successfully.");
-        void navigate({ to: "/app/analysis", replace: true });
+        void navigate({ to: "/app", replace: true });
       } catch (err) {
         setOauth("error");
         setError(err instanceof Error ? err.message : "Authentication failed.");

@@ -41,7 +41,7 @@ function LoginPage() {
   useThemeEffect();
 
   useEffect(() => {
-    if (authenticated) void navigate({ to: "/app/analysis", replace: true });
+    if (authenticated) void navigate({ to: "/app", replace: true });
   }, [authenticated, navigate]);
 
   useEffect(() => {
