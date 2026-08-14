@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { DigitTape } from "@/components/trade/DigitTape";
+import { LiveLastDigit } from "@/components/trade/LiveLastDigit";
 import { EntryMonitor } from "@/components/trade/EntryMonitor";
 import { OpenTradesPanel } from "@/components/trade/OpenTradesPanel";
 import { TradeHistoryPanel } from "@/components/trade/TradeHistoryPanel";
@@ -40,7 +40,7 @@ function ManualTradePage() {
       </header>
 
       <SymbolControls />
-      <DigitTape />
+      <LiveLastDigit />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -50,7 +50,6 @@ function ManualTradePage() {
         <div className="flex min-w-0 flex-col gap-4">
           <PredictionPanel />
           <OpenTradesPanel />
-          <LiveAccountStatus />
         </div>
       </div>
 

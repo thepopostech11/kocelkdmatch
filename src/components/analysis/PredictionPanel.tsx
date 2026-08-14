@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { validate7Layers } from "@/analysis/validator";
 import { Brain, Target, Timer, Zap, CheckCircle2, XCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePredictionState, useAnalysisSnapshot } from "@/hooks/useMarket";
@@ -20,6 +21,7 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
 export function PredictionPanel() {
   const snapshot = useAnalysisSnapshot();
   const { prediction, entry, predict } = usePredictionState();
+  const [validation, setValidation] = useState<{ name: string; status: "ANALYZING" | "PASSED" | "FAILED" }[] | null>(null);
   const record = useAnalysisStore((s) => s.record);
   const markResolved = useAnalysisStore((s) => s.markResolved);
   const notify = useNotificationStore((s) => s.push);
@@ -47,7 +49,43 @@ export function PredictionPanel() {
       `Target digit ${result.targetDigit}`,
       `Entry trigger ${result.entryTrigger} · ${result.confidence}% confidence`,
     );
+    // Begin progressive validation using the prediction and snapshot data
+    runValidation(result, snapshot).catch(() => {});
   };
+
+  async function runValidation(prediction: NonNullable<typeof prediction>, snapshot: ReturnType<typeof useAnalysisSnapshot>) {
+    const res = validate7Layers(snapshot, prediction as any);
+    // animate progressive reveal
+    setValidation(res.layers.map((l: any) => ({ name: l.name, status: "ANALYZING" as const })));
+    for (let i = 0; i < res.layers.length; i++) {
+      await new Promise((r) => setTimeout(r, 120));
+      setValidation((prev) => {
+        if (!prev) return null;
+        const next = prev.slice();
+        next[i] = { name: res.layers[i].name, status: res.layers[i].passed ? "PASSED" : "FAILED" };
+        return next;
+      });
+    }
+    // If all layers passed, re-run predict() to nudge the global prediction (causes TradeTicket seeding)
+    if (res.passed) {
+      try {
+        predict();
+      } catch {}
+    }
+  }
+
+  function getMinFrequency() {
+    // read from settings store default if available
+    try {
+      // dynamic import to avoid circular hooks in render path
+      // fallback to 12
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useSettingsStore } = require("@/stores/settingsStore");
+      return useSettingsStore.getState().strategyMinHighestFrequency ?? 12;
+    } catch {
+      return 12;
+    }
+  }
 
   const age = prediction ? entry.ticksObserved : 0;
 

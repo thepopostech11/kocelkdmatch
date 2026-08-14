@@ -88,57 +88,54 @@ function BotPage() {
             <span>Trading permission: <strong className="text-foreground">{diagnostics.tradingPermission ? "enabled" : "not granted"}</strong></span>
             <span>Analysis markets: <strong className="text-foreground">{marketCount} symbol{marketCount === 1 ? "" : "s"}</strong></span>
           </div>
-        </div>
-        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-64">
-          <label className="text-xs text-muted-foreground">Stake amount
-            <Input className="mt-1" type="number" min="0.35" step="0.01" value={stake} disabled={running} onChange={(event) => setStake(Number(event.target.value))} />
-          </label>
-          <div className="text-xs text-muted-foreground">
-            <div className="flex items-center justify-between">
-              <span>Min confidence</span>
-              <strong className="text-foreground">{minimumConfidence}%</strong>
-            </div>
-            <Slider
-              className="mt-2"
-              value={[minimumConfidence]}
-              min={1}
-              max={98}
-              step={1}
-              disabled={running}
-              onValueChange={(value) => {
-                const next = value[0] ?? 1;
-                setMinimumConfidence(next);
-                engine.setMinimumConfidence(next);
-              }}
-            />
-          </div>
-          {running ? (
-            <Button className="sm:col-span-2" variant="destructive" onClick={() => engine.stop()}><CircleStop />Stop bot</Button>
-          ) : (
-            <Button className="sm:col-span-2" onClick={() => void start()}><Play />Start bot</Button>
-          )}
-        </div>
-        {(actionError || engine.error) && <p className="text-sm text-destructive lg:col-span-2">{actionError ?? engine.error}</p>}
-      </section>
-
       <section className="panel p-3 sm:p-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-bold">Live Analysis Scanner</h2>
-          <p className="text-[11px] text-muted-foreground">
-            Last analysis update:{" "}
-            <strong className="font-mono text-foreground">
-              {sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"}
-            </strong>
-          </p>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
-          <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
-          <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
-          <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
-          <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
-          <Counter label="Min confidence" value={`${minimumConfidence}%`} />
-        </div>
+        <details open>
+          <summary className="text-sm font-bold">Live Analysis Scanner</summary>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <Counter label="Markets" value={`${totalMarkets} / ${marketCount || totalMarkets}`} />
+            <Counter label="Live" value={`${liveMarkets} / ${totalMarkets}`} />
+            <Counter label="Ready" value={`${readyMarkets} / ${totalMarkets}`} />
+            <Counter label="Qualified" value={`${qualifiedMarkets} / ${totalMarkets}`} />
+            <Counter label="Min confidence" value={`${minimumConfidence}%`} />
+          </div>
 
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {markets.length ? (
+              markets.map((item, index) => (
+                <ScannerCard
+                  key={item.symbol}
+                  index={index + 1}
+                  item={item}
+                  botStatus={engine.status}
+                  lockedSymbol={selected?.symbol ?? null}
+                />
+              ))
+            ) : (
+              <p className="col-span-full py-8 text-center text-xs text-muted-foreground">
+                Waiting for the shared Analysis Engine to publish live markets…
+              </p>
+            )}
+          </div>
+
+          {best && best.prediction && (
+            <div className="mt-3 rounded-xl border border-primary/40 bg-primary/5 p-3 text-xs">
+              <p className="font-bold">Best current opportunity · {best.displayName}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                <Metric label="Confidence" value={`${best.prediction.confidence}%`} />
+                <Metric label="Opportunity" value={String(best.opportunityScore)} />
+                <Metric label="Target" value={String(best.prediction.targetDigit)} />
+                <Metric label="Trigger" value={String(best.prediction.entryTrigger)} />
+                <Metric label="Duration" value={`${best.prediction.suggestedDuration} ticks`} />
+              </div>
+            </div>
+          )}
+          {!qualifiedMarkets && totalMarkets > 0 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Status: waiting for a qualified opportunity at {minimumConfidence}% minimum confidence.
+            </p>
+          )}
+        </details>
+      </section>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {markets.length ? (
             markets.map((item, index) => (
@@ -177,29 +174,31 @@ function BotPage() {
       </section>
 
       <section className="panel p-3 sm:p-4">
-        <h2 className="text-sm font-bold">Shared Analysis Connection</h2>
-        <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-          <Metric label="Analysis engine" value={diagnostics.feed === "streaming" ? "RUNNING" : diagnostics.feed.toUpperCase()} />
-          <Metric label="Analysis markets" value={String(sync.analysisMarkets)} />
-          <Metric label="Bot received" value={String(sync.botMarkets)} />
-          <Metric label="Bot subscription" value={sync.subscribed ? "CONNECTED" : "IDLE"} />
-          <Metric label="Latest tick" value={sync.lastTickAt ? new Date(sync.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
-          <Metric label="Latest analysis" value={sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"} />
-          <Metric label="Confidence source" value="Analysis Engine" />
-          <Metric label="Active threshold" value={`${sync.threshold}%`} />
-          <Metric label="Qualified markets" value={String(qualifiedMarkets)} />
-          <Metric label="Opportunity ID" value={sync.opportunityId ?? "—"} />
-          <Metric label="Selected symbol" value={sync.selectedSymbol ?? "—"} />
-          <Metric label="Selected confidence" value={sync.selectedConfidence == null ? "—" : `${sync.selectedConfidence}%`} />
-          <Metric label="Target / Trigger" value={prediction ? `${prediction.targetDigit} / ${prediction.entryTrigger}` : "—"} />
-          <Metric label="Duration" value={prediction ? `${prediction.suggestedDuration} ticks` : "—"} />
-          <Metric label="Execution" value={sync.execution.replaceAll("-", " ").toUpperCase()} />
-        </div>
-        {sync.analysisMarkets > 0 && sync.botMarkets === 0 && (
-          <p className="mt-3 text-xs text-destructive">
-            CRITICAL INTERNAL SYNC ERROR — the Bot is not consuming the shared analysis state.
-          </p>
-        )}
+        <details open>
+          <summary className="text-sm font-bold">Shared Analysis Connection</summary>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <Metric label="Analysis engine" value={diagnostics.feed === "streaming" ? "RUNNING" : diagnostics.feed.toUpperCase()} />
+            <Metric label="Analysis markets" value={String(sync.analysisMarkets)} />
+            <Metric label="Bot received" value={String(sync.botMarkets)} />
+            <Metric label="Bot subscription" value={sync.subscribed ? "CONNECTED" : "IDLE"} />
+            <Metric label="Latest tick" value={sync.lastTickAt ? new Date(sync.lastTickAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+            <Metric label="Latest analysis" value={sync.lastAnalysisAt ? new Date(sync.lastAnalysisAt).toLocaleTimeString([], { hour12: false }) : "—"} />
+            <Metric label="Confidence source" value="Analysis Engine" />
+            <Metric label="Active threshold" value={`${sync.threshold}%`} />
+            <Metric label="Qualified markets" value={String(qualifiedMarkets)} />
+            <Metric label="Opportunity ID" value={sync.opportunityId ?? "—"} />
+            <Metric label="Selected symbol" value={sync.selectedSymbol ?? "—"} />
+            <Metric label="Selected confidence" value={sync.selectedConfidence == null ? "—" : `${sync.selectedConfidence}%`} />
+            <Metric label="Target / Trigger" value={prediction ? `${prediction.targetDigit} / ${prediction.entryTrigger}` : "—"} />
+            <Metric label="Duration" value={prediction ? `${prediction.suggestedDuration} ticks` : "—"} />
+            <Metric label="Execution" value={sync.execution.replaceAll("-", " ").toUpperCase()} />
+          </div>
+          {sync.analysisMarkets > 0 && sync.botMarkets === 0 && (
+            <p className="mt-3 text-xs text-destructive">
+              CRITICAL INTERNAL SYNC ERROR — the Bot is not consuming the shared analysis state.
+            </p>
+          )}
+        </details>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
